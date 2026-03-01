@@ -329,65 +329,104 @@ function makeSeededRandom(seed) {
 
 function createPixelAvatarDataUri(seed) {
   const random = makeSeededRandom(seed);
-  const skinTones = ["#F2D4BE", "#E7BEA0", "#D9A884", "#C68F66", "#AD754E"];
-  const hairColors = ["#2A1D18", "#4E3323", "#3D2A1F", "#5F4A2F", "#1E1E1F"];
-  const jerseyColors = ["#D94816", "#0E5A8A", "#1F7A43", "#A32020", "#5942A6", "#1D3259"];
-  const eyeColors = ["#222222", "#1B2633", "#2A1D18"];
+  const skinTones = ["#F6D9C2", "#EDC8AA", "#DBAF8B", "#C89469", "#AF774D"];
+  const hairColors = ["#D57D43", "#A55A2A", "#8B4A24", "#3B2B26", "#E2B14C", "#353843"];
+  const jerseyColors = ["#D94816", "#0E5A8A", "#1F7A43", "#A32020", "#1D3259", "#2B678E"];
+  const eyeColors = ["#3D2B22", "#2A3342", "#4B2E2E"];
+  const eyebrowColors = ["#40261D", "#52382A", "#2A2A2A"];
   const skin = skinTones[Math.floor(random() * skinTones.length)];
   const hair = hairColors[Math.floor(random() * hairColors.length)];
   const jersey = jerseyColors[Math.floor(random() * jerseyColors.length)];
-  const jerseyTrim = random() < 0.5 ? "#F2E5C9" : "#FFFFFF";
+  const jerseyTrim = random() < 0.5 ? "#F7F1DF" : "#FFFFFF";
   const eye = eyeColors[Math.floor(random() * eyeColors.length)];
-  const bg = random() < 0.5 ? "#F3E7CF" : "#E3D7BF";
-  const hairPattern = Math.floor(random() * 3);
-  const jerseyPattern = Math.floor(random() * 3);
-  const matrix = [
-    [0, 0, 1, 1, 1, 1, 0, 0],
-    [0, 1, 1, 1, 1, 1, 1, 0],
-    [0, 1, 2, 2, 2, 2, 1, 0],
-    [1, 2, 2, 3, 3, 2, 2, 1],
-    [1, 2, 2, 2, 2, 2, 2, 1],
-    [0, 0, 2, 2, 2, 2, 0, 0],
-    [0, 4, 4, 4, 4, 4, 4, 0],
-    [4, 4, 5, 4, 4, 5, 4, 4]
-  ];
+  const brow = eyebrowColors[Math.floor(random() * eyebrowColors.length)];
+  const bgA = random() < 0.5 ? "#F5ECE0" : "#EEE4D6";
+  const bgB = random() < 0.5 ? "#D8E9F8" : "#E0D5F0";
+  const hairSpikes = 7 + Math.floor(random() * 4);
+  const eyeStyle = Math.floor(random() * 3);
+  const mouthStyle = Math.floor(random() * 3);
+  const jerseyNumber = 1 + Math.floor(random() * 18);
+  const skinShadow = random() < 0.5 ? "#EBC2A5" : "#DFAE8E";
+  const shortColor = random() < 0.5 ? "#22375F" : "#283048";
 
-  if (hairPattern === 1) {
-    matrix[0] = [0, 1, 1, 1, 1, 1, 1, 0];
-    matrix[1][0] = 1;
-    matrix[1][7] = 1;
-  } else if (hairPattern === 2) {
-    matrix[0] = [0, 0, 1, 1, 1, 1, 0, 0];
-    matrix[1][1] = 0;
-    matrix[1][6] = 0;
-    matrix[2][1] = 1;
-    matrix[2][6] = 1;
+  const hairPoints = ["16,49"];
+  for (let i = 0; i <= hairSpikes; i += 1) {
+    const x = 16 + (64 / hairSpikes) * i;
+    const y = i % 2 === 0 ? 11 + Math.floor(random() * 8) : 2 + Math.floor(random() * 8);
+    hairPoints.push(`${x.toFixed(1)},${y.toFixed(1)}`);
   }
+  hairPoints.push("80,49", "80,56", "16,56");
+  const hairPolygon = hairPoints.join(" ");
 
-  if (jerseyPattern === 1) {
-    matrix[7] = [4, 5, 4, 4, 4, 4, 5, 4];
-  } else if (jerseyPattern === 2) {
-    matrix[7] = [5, 4, 4, 5, 5, 4, 4, 5];
-  }
+  const eyeMarkup =
+    eyeStyle === 0
+      ? `
+        <ellipse cx="38.5" cy="47.5" rx="4.2" ry="4.6" fill="#fff"/>
+        <ellipse cx="57.5" cy="47.5" rx="4.2" ry="4.6" fill="#fff"/>
+        <ellipse cx="38.5" cy="48.3" rx="2.45" ry="2.95" fill="${eye}"/>
+        <ellipse cx="57.5" cy="48.3" rx="2.45" ry="2.95" fill="${eye}"/>
+      `
+      : eyeStyle === 1
+      ? `
+        <ellipse cx="39" cy="47.4" rx="4.3" ry="4.1" fill="#fff"/>
+        <ellipse cx="57" cy="47.4" rx="4.3" ry="4.1" fill="#fff"/>
+        <circle cx="39" cy="47.8" r="2.4" fill="${eye}"/>
+        <circle cx="57" cy="47.8" r="2.4" fill="${eye}"/>
+      `
+      : `
+        <ellipse cx="39.2" cy="48.1" rx="3.8" ry="3.4" fill="#fff"/>
+        <ellipse cx="56.8" cy="48.1" rx="3.8" ry="3.4" fill="#fff"/>
+        <ellipse cx="39.2" cy="48.5" rx="2.3" ry="2.2" fill="${eye}"/>
+        <ellipse cx="56.8" cy="48.5" rx="2.3" ry="2.2" fill="${eye}"/>
+      `;
 
-  const colorFor = (code) => {
-    if (code === 1) return hair;
-    if (code === 2) return skin;
-    if (code === 3) return eye;
-    if (code === 4) return jersey;
-    if (code === 5) return jerseyTrim;
-    return null;
-  };
+  const mouthMarkup =
+    mouthStyle === 0
+      ? `<path d="M42 58 Q48 63 54 58" fill="none" stroke="#6E3D36" stroke-width="2" stroke-linecap="round"/>`
+      : mouthStyle === 1
+      ? `<ellipse cx="48" cy="58.3" rx="4.7" ry="3.2" fill="#8A4A44"/><ellipse cx="48" cy="57.1" rx="3.3" ry="1.35" fill="#F3B0AC"/>`
+      : `<path d="M44 58.4 Q48 61.2 52 58.4" fill="none" stroke="#6E3D36" stroke-width="1.9" stroke-linecap="round"/>`;
 
-  let pixels = "";
-  for (let y = 0; y < matrix.length; y += 1) {
-    for (let x = 0; x < matrix[y].length; x += 1) {
-      const color = colorFor(matrix[y][x]);
-      if (!color) continue;
-      pixels += `<rect x="${x}" y="${y}" width="1" height="1" fill="${color}"/>`;
-    }
-  }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8" shape-rendering="crispEdges"><rect width="8" height="8" fill="${bg}"/>${pixels}</svg>`;
+  const jerseyPattern =
+    random() < 0.5
+      ? `<path d="M37 70 H59 L57 86 H39 Z" fill="${jersey}"/><path d="M47.5 70 V86" stroke="${jerseyTrim}" stroke-width="2"/>`
+      : `<path d="M36 70 H60 L58 86 H38 Z" fill="${jersey}"/><path d="M36 75 H60" stroke="${jerseyTrim}" stroke-width="2"/>`;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+    <defs>
+      <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="${bgA}"/>
+        <stop offset="100%" stop-color="${bgB}"/>
+      </linearGradient>
+    </defs>
+    <rect width="96" height="96" rx="15" fill="url(#bgGrad)"/>
+    <ellipse cx="48" cy="90.5" rx="20" ry="4" fill="rgba(25,20,20,0.18)"/>
+    <g stroke="#3E2A24" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+      <polygon points="${hairPolygon}" fill="${hair}"/>
+      <circle cx="48" cy="46" r="22" fill="${skin}"/>
+      <ellipse cx="27.7" cy="47.6" rx="3" ry="4.2" fill="${skin}"/>
+      <ellipse cx="68.3" cy="47.6" rx="3" ry="4.2" fill="${skin}"/>
+      <path d="M35 39 Q38 36 42 38" stroke="${brow}" fill="none"/>
+      <path d="M54 38 Q58 36 61 39" stroke="${brow}" fill="none"/>
+      ${eyeMarkup}
+      <circle cx="40" cy="47.2" r="0.8" fill="#fff"/>
+      <circle cx="58" cy="47.2" r="0.8" fill="#fff"/>
+      <ellipse cx="48" cy="53.2" rx="1.2" ry="0.9" fill="${skinShadow}" stroke="none"/>
+      ${mouthMarkup}
+      <path d="M33 67 Q48 74 63 67 L66 87 Q48 93 30 87 Z" fill="${jersey}" />
+      ${jerseyPattern}
+      <text x="48" y="83" text-anchor="middle" font-family="Arial, sans-serif" font-size="8.2" font-weight="700" fill="${jerseyTrim}">${jerseyNumber}</text>
+      <path d="M30 71 L24 78 L27 81 L33 74 Z" fill="${jersey}"/>
+      <path d="M66 71 L72 78 L69 81 L63 74 Z" fill="${jersey}"/>
+      <ellipse cx="25.5" cy="80.2" rx="2.7" ry="2.1" fill="${skin}" />
+      <ellipse cx="70.5" cy="80.2" rx="2.7" ry="2.1" fill="${skin}" />
+      <path d="M39 87 H57 L55 94 H41 Z" fill="${shortColor}" />
+      <path d="M43 94 V96" stroke="#3E2A24" />
+      <path d="M53 94 V96" stroke="#3E2A24" />
+      <ellipse cx="43" cy="96" rx="4.2" ry="1.2" fill="#2F2C35" stroke="none"/>
+      <ellipse cx="53" cy="96" rx="4.2" ry="1.2" fill="#2F2C35" stroke="none"/>
+    </g>
+  </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
