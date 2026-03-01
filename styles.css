@@ -35,8 +35,7 @@ body {
 }
 
 .banner {
-  position: sticky;
-  top: 0.75rem;
+  position: static;
   z-index: 20;
   display: grid;
   gap: 0.35rem;

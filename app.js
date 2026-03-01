@@ -17,10 +17,22 @@ const GAMEPLAN_OPTIONS = [
   { id: "defensive_wall", label: "Defensive Wall" },
   { id: "quick_tempo", label: "Quick Tempo" }
 ];
-const WEEKLY_FOCUS_OPTIONS = [
-  { id: "scout", label: "Scout Opponent", detail: "Better intel and smarter game-planning this week." },
-  { id: "individual", label: "Individual Plan", detail: "Large boost for one player this week." },
-  { id: "team", label: "Team Plan", detail: "Smaller boost for everyone, plus chemistry." }
+const WEEKLY_ENERGY_AREAS = [
+  {
+    id: "scouting",
+    label: "Scouting",
+    detail: "Improves opponent intel and counter confidence."
+  },
+  {
+    id: "individual",
+    label: "Individual Development",
+    detail: "Boosts one targeted player's growth."
+  },
+  {
+    id: "team",
+    label: "Team Development",
+    detail: "Improves chemistry and team-wide readiness."
+  }
 ];
 const UPGRADE_DEFS = [
   {
@@ -52,48 +64,48 @@ const UPGRADE_DEFS = [
 const DIVISIONS = ["Division 5", "Division 4", "Division 3", "Division 2", "Division 1", "Open Division"];
 const LEAGUE_NAMES = ["North Coast League", "Metro Valley League", "Canyon Crest League", "Pacific Hills League"];
 const FIRST_NAMES = [
-  "Avery",
-  "Riley",
-  "Skylar",
-  "Jordan",
-  "Peyton",
-  "Casey",
-  "Taylor",
-  "Morgan",
-  "Reese",
-  "Cameron",
-  "Quinn",
-  "Harper",
-  "Sydney",
-  "Dakota",
-  "Finley",
-  "Emerson",
-  "Hayden",
-  "Marlowe",
-  "Blake",
-  "Reagan",
-  "Ari",
-  "Tatum",
-  "Sage",
-  "Ainsley",
-  "Kennedy",
-  "Paige",
-  "Mia",
-  "Nora",
-  "Lila",
-  "Naomi",
-  "Sienna",
-  "Allie",
-  "Kendall",
-  "Zoey",
-  "Layla",
-  "Kira",
-  "Jasmine",
-  "Callie",
-  "Dylan",
-  "Brielle",
-  "Nadia",
-  "Haley"
+  "Liam",
+  "Noah",
+  "Oliver",
+  "Elijah",
+  "James",
+  "William",
+  "Benjamin",
+  "Lucas",
+  "Henry",
+  "Alexander",
+  "Mason",
+  "Michael",
+  "Ethan",
+  "Daniel",
+  "Jacob",
+  "Logan",
+  "Jackson",
+  "Levi",
+  "Sebastian",
+  "Mateo",
+  "Jack",
+  "Owen",
+  "Theodore",
+  "Aiden",
+  "Samuel",
+  "Joseph",
+  "John",
+  "David",
+  "Wyatt",
+  "Luke",
+  "Asher",
+  "Carter",
+  "Julian",
+  "Grayson",
+  "Leo",
+  "Jayden",
+  "Gabriel",
+  "Isaac",
+  "Lincoln",
+  "Anthony",
+  "Hudson",
+  "Dylan"
 ];
 const LAST_NAMES = [
   "Ramirez",
@@ -194,7 +206,7 @@ const MASCOTS = [
   "Comets"
 ];
 const POSITIONS = ["OH", "MB", "S", "RS", "LIB"];
-const SKILLS = ["attack", "defense", "serve", "setting", "block", "athleticism"];
+const SKILLS = ["serving", "passing", "setting", "hitting", "blocking", "awareness", "resilience", "leadership"];
 const TOURNAMENTS = [
   {
     id: "harvest_classic",
@@ -299,8 +311,15 @@ function gradeLabel(grade) {
   return "Sr";
 }
 
+function formatHeight(inches) {
+  const safe = Math.round(inches || 0);
+  const feet = Math.floor(safe / 12);
+  const rem = safe % 12;
+  return `${feet}'${rem}"`;
+}
+
 function friendlyFocusLabel(focusId) {
-  const found = WEEKLY_FOCUS_OPTIONS.find((focus) => focus.id === focusId);
+  const found = WEEKLY_ENERGY_AREAS.find((focus) => focus.id === focusId);
   return found ? found.label : "Not set";
 }
 
@@ -337,9 +356,23 @@ function createRandomName() {
 }
 
 function playerOverall(player) {
-  const average =
-    (player.attack + player.defense + player.serve + player.setting + player.block + player.athleticism) / 6;
+  const average = SKILLS.reduce((sum, key) => sum + (player[key] || 50), 0) / SKILLS.length;
   return Math.round(average);
+}
+
+function positionHeightBaseline(position) {
+  if (position === "MB") return 75;
+  if (position === "OH" || position === "RS") return 73;
+  if (position === "S") return 71;
+  return 69;
+}
+
+function physicalPotentialContribution(player) {
+  const heightScore = (player.heightInches - 68) * 1.5;
+  const reachScore = (player.standingReach - 92) * 0.7;
+  const blockTouchScore = (player.blockTouch - 104) * 0.75;
+  const approachTouchScore = (player.approachTouch - 106) * 0.9;
+  return (heightScore + reachScore + blockTouchScore + approachTouchScore) / 4;
 }
 
 function estimatePotential(player, upgradeLevel) {
@@ -361,20 +394,35 @@ function unlocksTournament(career, tournament) {
 function createPlayer(draft, opts = {}) {
   const baseSkill = opts.baseSkill ?? randomInt(46, 67);
   const variation = () => randomInt(-7, 8);
+  const position = opts.position ?? randomChoice(POSITIONS);
+  const heightBase = positionHeightBaseline(position);
+  const heightInches = clamp(opts.heightInches ?? heightBase + randomInt(-3, 3), 64, 82);
+  const standingReach = clamp(opts.standingReach ?? heightInches + randomInt(20, 27), 86, 112);
+  const verticalSeed = Math.round((baseSkill - 45) * 0.45 + randomInt(12, 26));
+  const blockTouch = clamp(opts.blockTouch ?? standingReach + verticalSeed + randomInt(-2, 2), 96, 132);
+  const approachTouch = clamp(opts.approachTouch ?? blockTouch + randomInt(2, 8), 99, 138);
+  const morale = clamp(opts.morale ?? randomInt(60, 82), 30, 99);
   const player = {
     id: nextPlayerId(draft),
     name: opts.name ?? createRandomName(),
+    gender: "M",
     grade: opts.grade ?? randomInt(9, 12),
-    position: opts.position ?? randomChoice(POSITIONS),
-    attack: clamp(baseSkill + variation(), 35, 95),
-    defense: clamp(baseSkill + variation(), 35, 95),
-    serve: clamp(baseSkill + variation(), 35, 95),
-    setting: clamp(baseSkill + variation(), 35, 95),
-    block: clamp(baseSkill + variation(), 35, 95),
-    athleticism: clamp(baseSkill + variation(), 35, 95),
-    potential: clamp((opts.potential ?? baseSkill + randomInt(9, 24)), 45, 99),
+    position,
+    heightInches,
+    standingReach,
+    blockTouch,
+    approachTouch,
+    serving: clamp(opts.serving ?? baseSkill + variation(), 35, 95),
+    passing: clamp(opts.passing ?? baseSkill + variation(), 35, 95),
+    setting: clamp(opts.setting ?? baseSkill + variation(), 35, 95),
+    hitting: clamp(opts.hitting ?? baseSkill + variation(), 35, 95),
+    blocking: clamp(opts.blocking ?? baseSkill + variation(), 35, 95),
+    awareness: clamp(opts.awareness ?? baseSkill + variation(), 35, 95),
+    resilience: clamp(opts.resilience ?? baseSkill + variation(), 35, 95),
+    leadership: clamp(opts.leadership ?? Math.round(morale * 0.9) + randomInt(-4, 5), 35, 95),
+    potential: 0,
     xp: opts.xp ?? 0,
-    morale: clamp(opts.morale ?? randomInt(60, 82), 30, 99),
+    morale,
     origin: opts.origin ?? "freshman",
     yearsInProgram: opts.yearsInProgram ?? 0,
     seasonStats: opts.seasonStats ?? {
@@ -382,6 +430,12 @@ function createPlayer(draft, opts = {}) {
       impact: 0
     }
   };
+  player.potential = clamp(
+    opts.potential ??
+      Math.round(playerOverall(player) + 10 + physicalPotentialContribution(player) / 2 + randomInt(-4, 7)),
+    45,
+    99
+  );
   return player;
 }
 
@@ -551,11 +605,11 @@ function deriveTeamProfileFromRoster(currentState) {
   }
   const average = (key) => Math.round(varsity.reduce((sum, player) => sum + player[key], 0) / varsity.length);
   return {
-    offense: average("attack"),
-    defense: average("defense"),
-    serveReceive: average("serve"),
-    block: average("block"),
-    tempo: average("athleticism")
+    offense: Math.round((average("hitting") + average("setting") + average("serving")) / 3),
+    defense: Math.round((average("passing") + average("awareness") + average("resilience")) / 3),
+    serveReceive: Math.round((average("passing") + average("awareness")) / 2),
+    block: Math.round((average("blocking") + average("awareness")) / 2),
+    tempo: Math.round((average("resilience") + average("awareness")) / 2)
   };
 }
 
@@ -567,6 +621,227 @@ function getVarsityPlayers(currentState) {
 function getJvPlayers(currentState) {
   const ids = new Set(currentState.team.rosters.jvIds);
   return currentState.program.rosterPlayers.filter((player) => ids.has(player.id));
+}
+
+function buildLeagueStandingsMap(league) {
+  const map = {};
+  for (const team of league.teams) {
+    map[team.id] = {
+      teamId: team.id,
+      teamName: `${team.schoolName} ${team.mascot}`,
+      wins: 0,
+      losses: 0,
+      setsFor: 0,
+      setsAgainst: 0,
+      streak: 0
+    };
+  }
+  return map;
+}
+
+function applyLeagueResultToStandings(standings, teamAId, teamBId, teamAWon, teamASets, teamBSets) {
+  if (!standings?.[teamAId] || !standings?.[teamBId]) return;
+  const teamA = standings[teamAId];
+  const teamB = standings[teamBId];
+  teamA.setsFor += teamASets;
+  teamA.setsAgainst += teamBSets;
+  teamB.setsFor += teamBSets;
+  teamB.setsAgainst += teamASets;
+
+  if (teamAWon) {
+    teamA.wins += 1;
+    teamB.losses += 1;
+    teamA.streak = teamA.streak >= 0 ? teamA.streak + 1 : 1;
+    teamB.streak = teamB.streak <= 0 ? teamB.streak - 1 : -1;
+  } else {
+    teamB.wins += 1;
+    teamA.losses += 1;
+    teamB.streak = teamB.streak >= 0 ? teamB.streak + 1 : 1;
+    teamA.streak = teamA.streak <= 0 ? teamA.streak - 1 : -1;
+  }
+}
+
+function sortedLeagueStandingsRows(standings) {
+  const rows = Object.values(standings || {});
+  rows.sort((a, b) => {
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    if (a.losses !== b.losses) return a.losses - b.losses;
+    const aDiff = a.setsFor - a.setsAgainst;
+    const bDiff = b.setsFor - b.setsAgainst;
+    if (bDiff !== aDiff) return bDiff - aDiff;
+    return a.teamName.localeCompare(b.teamName);
+  });
+
+  const leaderWins = rows[0]?.wins || 0;
+  const leaderLosses = rows[0]?.losses || 0;
+  return rows.map((row, index) => {
+    const total = row.wins + row.losses;
+    const pct = total > 0 ? row.wins / total : 0;
+    const gb = ((leaderWins - row.wins) + (row.losses - leaderLosses)) / 2;
+    return {
+      ...row,
+      rank: index + 1,
+      pct,
+      gb
+    };
+  });
+}
+
+function simulateBackgroundLeagueWeek(draft, week) {
+  if (!week || week.kind !== "league" || week.backgroundSimulated) return;
+  const league = draft.world.leagues[0];
+  const ids = shuffle(league.teams.map((team) => team.id).filter((id) => id !== "user_team"));
+  while (ids.length > 1) {
+    const teamAId = ids.pop();
+    const teamBId = ids.pop();
+    const teamA = findTeamById(draft, teamAId);
+    const teamB = findTeamById(draft, teamBId);
+    const result = simulateBestOfFive(teamA.strength + randomInt(-3, 3), teamB.strength + randomInt(-3, 3));
+    applyLeagueResultToStandings(
+      draft.season.leagueStandings,
+      teamAId,
+      teamBId,
+      result.won,
+      result.teamSets,
+      result.oppSets
+    );
+  }
+  week.backgroundSimulated = true;
+}
+
+function opponentTraitFromProfile(profile, mode = "strength") {
+  const entries = Object.entries(profile || {});
+  if (!entries.length) return "offense";
+  if (mode === "weakness") {
+    return entries.reduce((best, current) => (current[1] < best[1] ? current : best), entries[0])[0];
+  }
+  return entries.reduce((best, current) => (current[1] > best[1] ? current : best), entries[0])[0];
+}
+
+function traitLabel(key) {
+  const map = {
+    offense: "Offense Tempo",
+    defense: "Defensive Shape",
+    serveReceive: "Serve Receive",
+    block: "Blocking Wall",
+    tempo: "Transition Tempo"
+  };
+  return map[key] || key;
+}
+
+function counterForTrait(trait, mode = "strength") {
+  if (mode === "weakness") {
+    if (trait === "serveReceive") return "serve_pressure";
+    if (trait === "block") return "quick_tempo";
+    if (trait === "defense") return "quick_tempo";
+    return "balanced";
+  }
+  if (trait === "offense") return "defensive_wall";
+  if (trait === "tempo") return "defensive_wall";
+  if (trait === "block") return "quick_tempo";
+  if (trait === "serveReceive") return "serve_pressure";
+  return "balanced";
+}
+
+function initializeOpponentIntel(currentState) {
+  const intel = {};
+  const userLeague = currentState.world.leagues[0];
+  for (const team of userLeague.teams) {
+    if (team.id === "user_team") continue;
+    const strengthTrait = opponentTraitFromProfile(team.profile, "strength");
+    const weaknessTrait = opponentTraitFromProfile(team.profile, "weakness");
+    intel[team.id] = {
+      knowledge: randomInt(6, 14),
+      gamesSeen: 0,
+      playstyleKnown: false,
+      strengthKnown: false,
+      weaknessKnown: false,
+      countersKnown: false,
+      strengthTrait,
+      weaknessTrait,
+      counterToStrength: counterForTrait(strengthTrait, "strength"),
+      counterToWeakness: counterForTrait(weaknessTrait, "weakness"),
+      yourExposure: randomInt(8, 16),
+      notes: []
+    };
+  }
+  return intel;
+}
+
+function refreshIntelUnlocks(entry) {
+  entry.playstyleKnown = entry.knowledge >= 18;
+  entry.strengthKnown = entry.knowledge >= 34;
+  entry.weaknessKnown = entry.knowledge >= 52;
+  entry.countersKnown = entry.knowledge >= 70;
+}
+
+function gainOpponentIntel(draft, opponentId, points, reason = "") {
+  const intel = draft.season?.opponentIntel?.[opponentId];
+  if (!intel) return;
+  intel.knowledge = clamp(intel.knowledge + points, 0, 100);
+  refreshIntelUnlocks(intel);
+  if (reason) {
+    intel.notes = intel.notes || [];
+    intel.notes.unshift(reason);
+    intel.notes = intel.notes.slice(0, 4);
+  }
+}
+
+function applyWeeklyEnergyScouting(draft, week) {
+  if (!draft.season || week.scoutingApplied) return;
+  const scoutingPct = week.energy?.scouting ?? 0;
+  const scoutingPower =
+    (scoutingPct / 100) * (12 + draft.career.upgrades.scouting * 3) + draft.career.upgrades.scouting * 0.8;
+
+  for (const [opponentId, intel] of Object.entries(draft.season.opponentIntel || {})) {
+    intel.yourExposure = clamp(
+      intel.yourExposure + randomInt(2, 6) + Math.floor((week.opponentInvestments?.[opponentId] || 0) / 40),
+      0,
+      100
+    );
+    gainOpponentIntel(draft, opponentId, 1 + Math.floor(draft.career.upgrades.scouting / 2));
+  }
+
+  if (week.kind === "league") {
+    const uniqueOpponents = [...new Set(week.matches.map((match) => match.opponentId))];
+    for (const opponentId of uniqueOpponents) {
+      const extra = scoutingPower / Math.max(uniqueOpponents.length, 1);
+      gainOpponentIntel(draft, opponentId, extra, "Weekly scouting focus");
+    }
+  }
+  week.scoutingApplied = true;
+}
+
+function getCaptainPlayer(currentState, teamType, players) {
+  const captainId = teamType === "varsity" ? currentState.team.captains.varsityId : currentState.team.captains.jvId;
+  if (!captainId) return null;
+  return players.find((player) => player.id === captainId) || null;
+}
+
+function calculateCaptainEffect(currentState, teamType, players, lineupIds = null) {
+  if (!players.length) return -1;
+  const captain = getCaptainPlayer(currentState, teamType, players);
+  if (!captain) return -1.2;
+  const sorted = [...players].sort((a, b) => playerOverall(b) - playerOverall(a));
+  const rank = sorted.findIndex((player) => player.id === captain.id);
+  const captainOverall = playerOverall(captain);
+  const leadershipBoost = (captain.leadership - 55) / 6;
+  const lineupSet = lineupIds ? new Set(lineupIds) : null;
+  const captainInLineup = lineupSet ? lineupSet.has(captain.id) : rank <= 6;
+  const onCourtFactor = captainInLineup ? 1 : clamp(0.25 + (captainOverall - 52) / 80, 0.15, 0.6);
+  const forcedRotationPenalty =
+    captainInLineup ? 0 : clamp((rank - 5) * 0.9 + Math.max(0, 62 - captainOverall) / 10, 0, 6);
+  return leadershipBoost * onCourtFactor - forcedRotationPenalty;
+}
+
+function autoCaptainFromRosterIds(currentState, ids) {
+  const eligible = currentState.program.rosterPlayers.filter((player) => ids.includes(player.id));
+  if (!eligible.length) return null;
+  eligible.sort((a, b) => {
+    if (b.leadership !== a.leadership) return b.leadership - a.leadership;
+    return playerOverall(b) - playerOverall(a);
+  });
+  return eligible[0].id;
 }
 
 function generateTryoutPool(draft, summary = null) {
@@ -659,6 +934,10 @@ function generateTryoutPool(draft, summary = null) {
   draft.tryouts = {
     candidates: shuffle(pool),
     assignments,
+    captainSelections: {
+      varsityId: null,
+      jvId: null
+    },
     summary: {
       returning: returning.length,
       noShows: noShows.length,
@@ -695,6 +974,12 @@ function applyTryoutAutofill(draft, mode) {
     assignments[candidate.id] = "jv";
   });
   draft.tryouts.assignments = assignments;
+  const varsityCandidates = ranked.slice(0, 12).sort((a, b) => b.leadership - a.leadership);
+  const jvCandidates = ranked.slice(12, 24).sort((a, b) => b.leadership - a.leadership);
+  draft.tryouts.captainSelections = {
+    varsityId: varsityCandidates[0]?.id || null,
+    jvId: jvCandidates[0]?.id || null
+  };
   draft.tryouts.autoMode = mode;
 }
 
@@ -714,6 +999,18 @@ function finalizeTryouts(draft) {
     return { ok: false, message: "Select exactly 12 Varsity and 12 JV players." };
   }
 
+  const varsityCaptainId = draft.tryouts.captainSelections?.varsityId;
+  const jvCaptainId = draft.tryouts.captainSelections?.jvId;
+  if (!varsityCaptainId || !jvCaptainId) {
+    return { ok: false, message: "Select one captain for Varsity and one for JV." };
+  }
+  if (!varsities.some((player) => player.id === varsityCaptainId)) {
+    return { ok: false, message: "Varsity captain must be assigned to Varsity." };
+  }
+  if (!jvs.some((player) => player.id === jvCaptainId)) {
+    return { ok: false, message: "JV captain must be assigned to JV." };
+  }
+
   draft.program.rosterPlayers = [...varsities, ...jvs].map((player) => ({
     ...player,
     yearsInProgram: (player.yearsInProgram ?? 0) + 1
@@ -726,6 +1023,10 @@ function finalizeTryouts(draft) {
 
   draft.team.rosters.varsityIds = varsities.map((player) => player.id);
   draft.team.rosters.jvIds = jvs.map((player) => player.id);
+  draft.team.captains = {
+    varsityId: varsityCaptainId,
+    jvId: jvCaptainId
+  };
 
   const continuity = varsities.filter((player) => (draft.program.returningRosterIds || []).includes(player.id)).length;
   draft.team.chemistry = clamp(
@@ -758,11 +1059,8 @@ function buildLeagueMatchups(currentState) {
       home: true,
       status: "pending",
       gameplan: "balanced",
-      control: {
-        mode: "autoplay",
-        timeoutsPerSet: 1,
-        substitutions: 7
-      }
+      pregame: null,
+      live: null
     });
     matches.push({
       id: `M-${opponent.id}-away`,
@@ -771,11 +1069,8 @@ function buildLeagueMatchups(currentState) {
       home: false,
       status: "pending",
       gameplan: "balanced",
-      control: {
-        mode: "autoplay",
-        timeoutsPerSet: 1,
-        substitutions: 7
-      }
+      pregame: null,
+      live: null
     });
   }
   return shuffle(matches);
@@ -799,14 +1094,12 @@ function createSeasonWeeks(currentState) {
         tournamentId,
         status: "pending",
         gameplan: "balanced",
-        control: {
-          mode: "autoplay",
-          timeoutsPerSet: 1,
-          substitutions: 7
-        },
+        opponentInvestments: {},
+        energy: { scouting: 34, individual: 33, team: 33 },
+        energyTargetPlayerId: null,
+        scoutingApplied: false,
         focusLocked: false,
         focus: null,
-        focusTargetPlayerId: null,
         summary: null
       });
       continue;
@@ -824,9 +1117,13 @@ function createSeasonWeeks(currentState) {
       title: `League Week ${weekNumber}`,
       matches: weekMatches,
       status: "pending",
+      backgroundSimulated: false,
+      opponentInvestments: {},
+      energy: { scouting: 34, individual: 33, team: 33 },
+      energyTargetPlayerId: null,
+      scoutingApplied: false,
       focusLocked: false,
       focus: null,
-      focusTargetPlayerId: null,
       summary: null
     });
   }
@@ -835,9 +1132,10 @@ function createSeasonWeeks(currentState) {
 }
 
 function initializeSeasonState(draft) {
-  draft.season = {
+  const season = {
     weekIndex: 0,
     weeks: createSeasonWeeks(draft),
+    viewTab: "matchday",
     record: {
       varsityWins: 0,
       varsityLosses: 0,
@@ -846,39 +1144,44 @@ function initializeSeasonState(draft) {
       leagueWins: 0,
       leagueLosses: 0
     },
+    leagueStandings: buildLeagueStandingsMap(draft.world.leagues[0]),
+    opponentIntel: initializeOpponentIntel(draft),
     rankingPoints: 0,
     matchesPlayed: [],
     tournamentResults: [],
     postseason: null
   };
+  for (const week of season.weeks) {
+    if (week.kind !== "league") continue;
+    const investments = {};
+    for (const match of week.matches) {
+      investments[match.opponentId] = randomInt(18, 72);
+    }
+    week.opponentInvestments = investments;
+  }
+  draft.season = season;
 }
 
-function evaluateWeeklyEffects(currentState, week) {
-  const base = {
-    teamBonus: 0,
-    individualBonus: 0,
-    individualTargetId: null,
-    intelLevel: 0,
-    chemistryDelta: 0
+function evaluateWeeklyEffects(currentState, week, opponentId = null) {
+  const energy = week.energy || { scouting: 34, individual: 33, team: 33 };
+  const scoutingRatio = clamp((energy.scouting || 0) / 100, 0, 1);
+  const individualRatio = clamp((energy.individual || 0) / 100, 0, 1);
+  const teamRatio = clamp((energy.team || 0) / 100, 0, 1);
+  const intel = opponentId ? currentState.season?.opponentIntel?.[opponentId] : null;
+  const knowledgeFactor = intel ? (intel.knowledge || 0) / 100 : 0;
+
+  return {
+    teamBonus: teamRatio * (2 + currentState.career.upgrades.training * 0.6),
+    individualBonus: individualRatio * (3 + currentState.career.upgrades.training * 0.8),
+    individualTargetId: week.energyTargetPlayerId || null,
+    intelLevel:
+      scoutingRatio * (1.6 + currentState.career.upgrades.scouting * 0.5) +
+      knowledgeFactor * (1 + currentState.career.upgrades.scouting * 0.15),
+    chemistryDelta: Math.round(teamRatio * (2 + currentState.career.upgrades.culture * 0.6)),
+    scoutingRatio,
+    individualRatio,
+    teamRatio
   };
-
-  if (!week.focus) return base;
-
-  if (week.focus === "scout") {
-    base.intelLevel = 1 + currentState.career.upgrades.scouting * 0.4;
-  }
-
-  if (week.focus === "individual") {
-    base.individualTargetId = week.focusTargetPlayerId;
-    base.individualBonus = 2 + currentState.career.upgrades.training * 0.7;
-  }
-
-  if (week.focus === "team") {
-    base.teamBonus = 1.4 + currentState.career.upgrades.training * 0.5;
-    base.chemistryDelta = 1 + Math.floor(currentState.career.upgrades.culture / 2);
-  }
-
-  return base;
 }
 
 function computeRosterPower(players) {
@@ -907,26 +1210,25 @@ function gameplanTargetKey(gameplan) {
   return "balanced";
 }
 
-function calculateGameplanBonus(gameplan, opponentProfile, intelLevel, upgrade) {
-  if (gameplan === "balanced") return 1 + upgrade * 0.35;
-  const weaknessKey = getOpponentWeakness(opponentProfile);
-  const target = gameplanTargetKey(gameplan);
-  const certaintyBonus = intelLevel > 0 ? 1.3 + intelLevel : 0.5;
-  if (target === weaknessKey) {
-    return 2 + certaintyBonus + upgrade * 0.55;
-  }
-  if (intelLevel <= 0 && Math.random() < 0.34) {
-    return 1.4 + upgrade * 0.4;
-  }
-  return -0.8 + upgrade * 0.25;
+function lineupPower(players, lineupIds) {
+  const ids = new Set(lineupIds || []);
+  const lineup = players.filter((player) => ids.has(player.id));
+  if (!lineup.length) return computeRosterPower(players);
+  return lineup.reduce((sum, player) => sum + playerOverall(player), 0) / lineup.length;
 }
 
-function calculateControlBonus(control) {
-  if (!control || control.mode === "autoplay") return 0;
-  const timeoutFit = 1 - Math.abs((control.timeoutsPerSet || 1) - 1.5) / 2;
-  const substitutionFit = 1 - Math.abs((control.substitutions || 7) - 8) / 15;
-  const weighted = clamp(timeoutFit * 0.55 + substitutionFit * 0.45, 0, 1);
-  return weighted * 2.4;
+function computeCounterKnowledgeBonus(currentState, week, opponent, gameplan) {
+  const intel = currentState.season?.opponentIntel?.[opponent.id];
+  const weakTarget = intel?.counterToWeakness || counterForTrait(getOpponentWeakness(opponent.profile), "weakness");
+  const strengthTarget = intel?.counterToStrength || counterForTrait(opponentTraitFromProfile(opponent.profile, "strength"), "strength");
+  const counterMatch = gameplan === weakTarget || gameplan === strengthTarget;
+  const effects = evaluateWeeklyEffects(currentState, week, opponent.id);
+  const baseCertainty = effects.intelLevel + currentState.career.upgrades.gameplan * 0.4;
+  const certainty = intel?.countersKnown ? baseCertainty + 1.2 : baseCertainty * 0.65;
+  const opponentPrep = week.opponentInvestments?.[opponent.id] || randomInt(20, 60);
+  const neutralization = clamp((opponentPrep - (week.energy?.scouting || 0)) / 70 + (intel?.yourExposure || 0) / 130, 0, 1.3);
+  const matchupBonus = counterMatch ? 2.2 + certainty : 0.4 + certainty * 0.2;
+  return matchupBonus - neutralization * 2;
 }
 
 function simulateSet(teamWinProb, finalSet = false) {
@@ -941,17 +1243,18 @@ function simulateSet(teamWinProb, finalSet = false) {
   return { team: loserPoints, opp: winnerPoints, won: false };
 }
 
-function simulateBestOfFive(teamPower, opponentPower) {
+function simulateBestOfFive(teamPower, opponentPower, setsToWin = 3) {
   let teamSets = 0;
   let oppSets = 0;
   const sets = [];
+  const decidingSetIndex = setsToWin * 2 - 2;
 
-  while (teamSets < 3 && oppSets < 3) {
+  while (teamSets < setsToWin && oppSets < setsToWin) {
     const setIndex = teamSets + oppSets;
     const momentum = (teamSets - oppSets) * 0.08;
     const diff = (teamPower - opponentPower) / 13 + momentum;
     const winProb = clamp(logistic(diff), 0.1, 0.9);
-    const set = simulateSet(winProb, setIndex === 4);
+    const set = simulateSet(winProb, setIndex === decidingSetIndex);
     sets.push(set);
     if (set.won) teamSets += 1;
     else oppSets += 1;
@@ -966,15 +1269,18 @@ function simulateBestOfFive(teamPower, opponentPower) {
   };
 }
 
-function computeVaristyPowerForMatch(currentState, week, opponent) {
+function computeVaristyPowerForMatch(currentState, week, opponent, lineupIds = null) {
   const varsity = getVarsityPlayers(currentState);
   const rosterPower = computeRosterPower(varsity);
+  const activeLineupIds = lineupIds && lineupIds.length ? lineupIds : varsity.slice(0, 6).map((player) => player.id);
+  const captainEffect = calculateCaptainEffect(currentState, "varsity", varsity, activeLineupIds);
+  const lineupDelta = (lineupPower(varsity, activeLineupIds) - rosterPower) / 2.8;
   const profile = deriveTeamProfileFromRoster(currentState);
   const teamNode = userTeamInfo(currentState);
   teamNode.profile = profile;
   teamNode.strength = Math.round(rosterPower);
 
-  const weeklyEffects = evaluateWeeklyEffects(currentState, week);
+  const weeklyEffects = evaluateWeeklyEffects(currentState, week, opponent.id);
   const chemistryBoost = (currentState.team.chemistry - 55) / 7;
   const focusBonus = weeklyEffects.teamBonus;
   const upgradeBonus =
@@ -984,9 +1290,12 @@ function computeVaristyPowerForMatch(currentState, week, opponent) {
   const homeBonus = 0.8;
 
   return {
-    base: rosterPower + chemistryBoost + focusBonus + upgradeBonus + homeBonus,
+    base: rosterPower + chemistryBoost + focusBonus + upgradeBonus + homeBonus + captainEffect + lineupDelta,
     weeklyEffects,
-    varsity
+    varsity,
+    captainEffect,
+    lineupDelta,
+    lineupIds: activeLineupIds
   };
 }
 
@@ -1014,30 +1323,31 @@ function grantExperienceForMatch(players, won, impactMagnitude, trainingLevel) {
   }
 }
 
-function buildLeagueMatchContext(draft, week, match, opponent) {
-  const teamContext = computeVaristyPowerForMatch(draft, week, opponent);
-  const gameplanBonus = calculateGameplanBonus(
-    match.gameplan,
-    opponent.profile,
-    teamContext.weeklyEffects.intelLevel,
-    draft.career.upgrades.gameplan
-  );
-  const controlBonus = match.control.mode === "autoplay" ? calculateControlBonus(match.control) : 0;
-  let teamPower = teamContext.base + gameplanBonus + controlBonus;
+function buildLeagueMatchContext(draft, week, match, opponent, pregame) {
+  const gameplan = pregame?.gameplan || match.gameplan || "balanced";
+  const lineupIds = pregame?.lineupIds || getVarsityPlayers(draft).slice(0, 6).map((player) => player.id);
+  const teamContext = computeVaristyPowerForMatch(draft, week, opponent, lineupIds);
+  const gameplanBonus = computeCounterKnowledgeBonus(draft, week, opponent, gameplan);
+  let teamPower = teamContext.base + gameplanBonus;
 
-  if (week.focus === "individual" && week.focusTargetPlayerId) {
-    const targetPlayer = teamContext.varsity.find((player) => player.id === week.focusTargetPlayerId);
+  const targetId = week.energyTargetPlayerId;
+  if ((week.energy?.individual || 0) > 0 && targetId) {
+    const targetPlayer = teamContext.varsity.find((player) => player.id === targetId);
     if (targetPlayer) {
-      teamPower += 1.6 + draft.career.upgrades.training * 0.5;
+      teamPower += teamContext.weeklyEffects.individualBonus;
     }
   }
 
-  const opponentPower = opponent.strength + randomInt(-3, 3) + (match.home ? -0.6 : 0.8);
+  const opponentIntel = draft.season.opponentIntel?.[opponent.id];
+  const opponentKnowledgeBoost = (opponentIntel?.yourExposure || 0) / 35;
+  const opponentPower = opponent.strength + randomInt(-3, 3) + (match.home ? -0.6 : 0.8) + opponentKnowledgeBoost;
   return {
     teamContext,
     teamPower,
     opponentPower,
-    gameplanBonus
+    gameplanBonus,
+    gameplan,
+    lineupIds
   };
 }
 
@@ -1051,14 +1361,15 @@ function calculateLeagueRankingGain({ won, opponentStrength, teamPower, home, te
 }
 
 function applyWeeklyDevelopmentEffects(draft, week, teamContext) {
-  if (week.focus === "team") {
+  if ((week.energy?.team || 0) > 0) {
     draft.team.chemistry = clamp(draft.team.chemistry + teamContext.weeklyEffects.chemistryDelta, 20, 99);
   }
-  if (week.focus === "individual" && week.focusTargetPlayerId) {
-    const target = draft.program.rosterPlayers.find((player) => player.id === week.focusTargetPlayerId);
+  if ((week.energy?.individual || 0) > 0 && week.energyTargetPlayerId) {
+    const target = draft.program.rosterPlayers.find((player) => player.id === week.energyTargetPlayerId);
     if (target) {
       const targetSkill = randomChoice(SKILLS);
-      target[targetSkill] = clamp(target[targetSkill] + 1 + Math.floor(draft.career.upgrades.training / 3), 30, 99);
+      const growth = 1 + Math.floor((week.energy.individual / 100) * 3) + Math.floor(draft.career.upgrades.training / 3);
+      target[targetSkill] = clamp(target[targetSkill] + growth, 30, 99);
       target.morale = clamp(target.morale + 2, 20, 99);
     }
   }
@@ -1074,9 +1385,10 @@ function completeLeagueMatch(
   metadata = {}
 ) {
   const jvPlayers = getJvPlayers(draft);
-  const jvPower = computeRosterPower(jvPlayers) + draft.career.upgrades.training * 0.4;
+  const jvCaptainEffect = calculateCaptainEffect(draft, "jv", jvPlayers);
+  const jvPower = computeRosterPower(jvPlayers) + draft.career.upgrades.training * 0.4 + jvCaptainEffect;
   const jvOpponentPower = clamp(opponent.strength - 6 + randomInt(-4, 4), 35, 96);
-  const jvResult = simulateBestOfFive(jvPower, jvOpponentPower);
+  const jvResult = simulateBestOfFive(jvPower, jvOpponentPower, 2);
 
   grantExperienceForMatch(
     context.teamContext.varsity,
@@ -1106,6 +1418,15 @@ function completeLeagueMatch(
   if (jvResult.won) draft.season.record.jvWins += 1;
   else draft.season.record.jvLosses += 1;
 
+  applyLeagueResultToStandings(
+    draft.season.leagueStandings,
+    "user_team",
+    opponent.id,
+    varsityResult.won,
+    varsityResult.teamSets,
+    varsityResult.oppSets
+  );
+
   const rankingGain = calculateLeagueRankingGain({
     won: varsityResult.won,
     opponentStrength: opponent.strength,
@@ -1125,8 +1446,8 @@ function completeLeagueMatch(
     home: match.home,
     varsity: varsityResult,
     jv: jvResult,
-    gameplan: match.gameplan,
-    control: match.control,
+    gameplan: context.gameplan,
+    lineupIds: context.lineupIds,
     rankingGain,
     opponentStrength: opponent.strength,
     dateIndex: draft.season.matchesPlayed.length + 1,
@@ -1147,32 +1468,36 @@ function completeLeagueMatch(
   return played;
 }
 
-function createLiveSet(setIndex, teamSets, oppSets) {
+function createLiveSet(setIndex, teamSets, oppSets, setsToWin = 3) {
   return {
     setIndex,
-    target: teamSets === 2 && oppSets === 2 ? 15 : 25,
+    target: teamSets === setsToWin - 1 && oppSets === setsToWin - 1 ? 15 : 25,
     team: 0,
-    opp: 0,
-    timeoutsUsed: 0
+    opp: 0
   };
 }
 
-function createLiveMatchSession(match, context, opponent) {
+function createLiveMatchSession(match, context, opponent, pregame) {
+  const lineupIds = [...(pregame?.lineupIds || [])];
   return {
     teamPower: context.teamPower,
     opponentPower: context.opponentPower,
+    gameplan: context.gameplan,
+    lineupIds,
+    benchIds: (pregame?.benchIds || []).filter((id) => !lineupIds.includes(id)),
     opponentName: `${opponent.schoolName} ${opponent.mascot}`,
-    timeoutsPerSet: clamp(match.control.timeoutsPerSet, 0, 2),
-    remainingSubstitutions: clamp(match.control.substitutions, 0, 15),
+    serving: Math.random() < 0.5 ? "team" : "opp",
+    rotationIndexTeam: 0,
+    rotationIndexOpp: 0,
+    setsToWin: 3,
     setsWonTeam: 0,
     setsWonOpp: 0,
-    currentSet: createLiveSet(1, 0, 0),
+    currentSet: createLiveSet(1, 0, 0, 3),
     setScores: [],
     rallyCount: 0,
-    totalTimeoutsUsed: 0,
-    totalSubsUsed: 0,
-    timeoutBoostRallies: 0,
-    substitutionBoostRallies: 0,
+    activeBoosts: [],
+    scenario: null,
+    scenarioLog: [],
     finished: false
   };
 }
@@ -1191,84 +1516,215 @@ function advanceLiveSet(live) {
     opp: live.currentSet.opp,
     won
   });
-  live.timeoutBoostRallies = 0;
-  live.substitutionBoostRallies = 0;
-  if (live.setsWonTeam >= 3 || live.setsWonOpp >= 3) {
+  if (live.setsWonTeam >= live.setsToWin || live.setsWonOpp >= live.setsToWin) {
     live.finished = true;
     return;
   }
-  live.currentSet = createLiveSet(live.setScores.length + 1, live.setsWonTeam, live.setsWonOpp);
+  live.currentSet = createLiveSet(live.setScores.length + 1, live.setsWonTeam, live.setsWonOpp, live.setsToWin);
 }
 
 function liveRallyWinProbability(live) {
+  const tempTeam = live.activeBoosts.reduce((sum, boost) => sum + (boost.team || 0), 0);
+  const tempOpp = live.activeBoosts.reduce((sum, boost) => sum + (boost.opp || 0), 0);
   const setDiff = (live.setsWonTeam - live.setsWonOpp) * 0.08;
   const pointDiff = (live.currentSet.team - live.currentSet.opp) * 0.02;
-  const timeoutTerm = live.timeoutBoostRallies > 0 ? 0.22 : 0;
-  const subTerm = live.substitutionBoostRallies > 0 ? 0.16 : 0;
-  const raw = (live.teamPower - live.opponentPower) / 14 + setDiff - pointDiff + timeoutTerm + subTerm;
+  const raw = (live.teamPower + tempTeam - (live.opponentPower + tempOpp)) / 14 + setDiff - pointDiff;
   return clamp(logistic(raw), 0.12, 0.88);
 }
 
-function runLiveRally(live) {
+function decayLiveBoosts(live) {
+  live.activeBoosts = (live.activeBoosts || [])
+    .map((boost) => ({ ...boost, ralliesLeft: boost.ralliesLeft - 1 }))
+    .filter((boost) => boost.ralliesLeft > 0);
+}
+
+function maybeRotateAfterSideout(live, winner) {
+  if (winner === live.serving) return;
+  live.serving = winner;
+  if (winner === "team") {
+    live.rotationIndexTeam = (live.rotationIndexTeam + 1) % Math.max(live.lineupIds.length, 1);
+  } else {
+    live.rotationIndexOpp = (live.rotationIndexOpp + 1) % 6;
+  }
+}
+
+function averageSkill(players, key) {
+  if (!players.length) return 50;
+  return players.reduce((sum, player) => sum + (player[key] || 50), 0) / players.length;
+}
+
+function generateLiveScenario(draft, week, match) {
+  const intel = draft.season.opponentIntel?.[match.opponentId];
+  const lineup = getVarsityPlayers(draft).filter((player) => match.live.lineupIds.includes(player.id));
+  const bench = getVarsityPlayers(draft).filter((player) => match.live.benchIds.includes(player.id));
+  const coachRead = draft.career.upgrades.gameplan + draft.career.upgrades.scouting;
+  const scoutEnergy = week.energy?.scouting || 0;
+  const awareness = averageSkill(lineup, "awareness");
+  const resilience = averageSkill(lineup, "resilience");
+  const leadership = averageSkill(lineup, "leadership");
+  const intelligenceFactor = ((intel?.knowledge || 0) / 100) + scoutEnergy / 100 + coachRead / 10;
+
+  const scenarioTypeRoll = Math.random();
+  if (scenarioTypeRoll < 0.33) {
+    const readBonus = clamp(-0.3 + intelligenceFactor * 1.4, -0.4, 1.8);
+    return {
+      id: `scn-${Date.now()}-${randomInt(1, 999)}`,
+      title: "Opponent Shift Spotted",
+      body: "Their setter changed tempo and is forcing your block to react late.",
+      options: [
+        {
+          id: "scout-adjust",
+          label: "Use scout cue and hard switch block assignment",
+          impact: { team: readBonus, opp: -0.25, rallies: 4 }
+        },
+        {
+          id: "stay-steady",
+          label: "Stay in current scheme",
+          impact: { team: 0, opp: 0.1, rallies: 3 }
+        },
+        {
+          id: "overcommit",
+          label: "Overload to the hot hitter",
+          impact: { team: -0.25, opp: 0.25, rallies: 3 }
+        }
+      ]
+    };
+  }
+
+  if (scenarioTypeRoll < 0.66 || bench.length < 2) {
+    const calmBonus = clamp((resilience + leadership - 118) / 20 + draft.career.upgrades.culture * 0.1, -0.4, 1.5);
+    return {
+      id: `scn-${Date.now()}-${randomInt(1, 999)}`,
+      title: "Momentum Swing",
+      body: "You lost two long rallies and the gym got loud.",
+      options: [
+        {
+          id: "captain-huddle",
+          label: "Call captain-led huddle",
+          impact: { team: calmBonus, opp: 0, rallies: 4 }
+        },
+        {
+          id: "coach-push",
+          label: "Challenge them with aggressive serve pressure",
+          impact: { team: 0.5, opp: 0.2, rallies: 3 }
+        },
+        {
+          id: "play-through",
+          label: "Play through it",
+          impact: { team: -0.2, opp: 0.2, rallies: 3 }
+        }
+      ]
+    };
+  }
+
+  const sortedBench = [...bench].sort((a, b) => playerOverall(b) - playerOverall(a)).slice(0, 3);
+  const bestId = sortedBench[0].id;
+  return {
+    id: `scn-${Date.now()}-${randomInt(1, 999)}`,
+    title: "Bench Spark Decision",
+    body: "You can insert one bench player for a short tactical stretch.",
+    options: sortedBench.map((player) => ({
+      id: `bench-${player.id}`,
+      label: `Insert ${player.name} (OVR ${playerOverall(player)})`,
+      impact: {
+        team: player.id === bestId ? 1 : playerOverall(player) > playerOverall(sortedBench[sortedBench.length - 1]) ? 0.3 : -0.35,
+        opp: 0,
+        rallies: 4
+      },
+      swapInId: player.id
+    }))
+  };
+}
+
+function applyLiveScenarioChoice(draft, week, match, optionId) {
+  const live = match.live;
+  if (!live?.scenario) return { ok: false, message: "No active scenario." };
+  const option = live.scenario.options.find((candidate) => candidate.id === optionId);
+  if (!option) return { ok: false, message: "Invalid scenario option." };
+  const impact = option.impact || {};
+  live.activeBoosts.push({
+    team: impact.team || 0,
+    opp: impact.opp || 0,
+    ralliesLeft: impact.rallies || 3
+  });
+  if (option.swapInId) {
+    const lineupIds = [...live.lineupIds];
+    const outIndex = lineupIds.length - 1;
+    const swapOutId = lineupIds[outIndex];
+    lineupIds[outIndex] = option.swapInId;
+    live.lineupIds = lineupIds;
+    live.benchIds = [...new Set([...live.benchIds.filter((id) => id !== option.swapInId), swapOutId])];
+  }
+  live.scenarioLog.push({ title: live.scenario.title, option: option.label });
+  live.scenario = null;
+  return { ok: true, message: option.label };
+}
+
+function maybeSpawnLiveScenario(draft, week, match) {
+  const live = match.live;
+  if (live.finished || live.scenario) return;
+  const scoutingPct = week.energy?.scouting || 0;
+  const baseChance = 0.18 + (100 - scoutingPct) / 450;
+  if (live.rallyCount > 0 && live.rallyCount % 7 === 0 && Math.random() < baseChance) {
+    live.scenario = generateLiveScenario(draft, week, match);
+  }
+}
+
+function runLiveRally(draft, week, match) {
+  const live = match.live;
   if (live.finished) return { ok: false, message: "Match already complete." };
+  if (live.scenario) return { ok: false, message: "Resolve the scenario before continuing." };
   const probability = liveRallyWinProbability(live);
   const teamWinsRally = Math.random() < probability;
   if (teamWinsRally) live.currentSet.team += 1;
   else live.currentSet.opp += 1;
 
+  maybeRotateAfterSideout(live, teamWinsRally ? "team" : "opp");
   live.rallyCount += 1;
-  if (live.timeoutBoostRallies > 0) live.timeoutBoostRallies -= 1;
-  if (live.substitutionBoostRallies > 0) live.substitutionBoostRallies -= 1;
+  decayLiveBoosts(live);
 
   const endedSet = liveSetComplete(live);
   if (endedSet) {
     advanceLiveSet(live);
+  }
+  if (!live.finished) {
+    maybeSpawnLiveScenario(draft, week, match);
   }
 
   return {
     ok: true,
     rallyWon: teamWinsRally,
     endedSet,
-    finished: live.finished
+    finished: live.finished,
+    scenario: Boolean(live.scenario)
   };
 }
 
-function useLiveTimeout(live) {
-  if (live.finished) return { ok: false, message: "Match already complete." };
-  if (live.currentSet.timeoutsUsed >= live.timeoutsPerSet) {
-    return { ok: false, message: "No timeouts remaining for this set." };
-  }
-  live.currentSet.timeoutsUsed += 1;
-  live.totalTimeoutsUsed += 1;
-  live.timeoutBoostRallies += 2;
-  return { ok: true, message: "Timeout called. Team settled and adjusted." };
-}
-
-function useLiveSubstitution(live) {
-  if (live.finished) return { ok: false, message: "Match already complete." };
-  if (live.remainingSubstitutions <= 0) {
-    return { ok: false, message: "No substitutions remaining." };
-  }
-  live.remainingSubstitutions -= 1;
-  live.totalSubsUsed += 1;
-  live.substitutionBoostRallies += 2;
-  return { ok: true, message: "Substitution made. Rotation energy improved." };
-}
-
-function autoplayCurrentSet(live) {
+function autoplayCurrentSet(draft, week, match) {
+  const live = match.live;
   let rallies = 0;
   const setIndex = live.currentSet.setIndex;
   while (!live.finished && live.currentSet.setIndex === setIndex && rallies < 150) {
-    runLiveRally(live);
+    const step = runLiveRally(draft, week, match);
+    if (step.scenario && live.scenario) {
+      const best = [...live.scenario.options].sort((a, b) => (b.impact?.team || 0) - (a.impact?.team || 0))[0];
+      applyLiveScenarioChoice(draft, week, match, best.id);
+    }
     rallies += 1;
   }
   return { ok: true };
 }
 
-function autoplayEntireLiveMatch(live) {
+function autoplayEntireLiveMatch(draft, week, match) {
+  const live = match.live;
   let safety = 0;
   while (!live.finished && safety < 800) {
-    runLiveRally(live);
+    const step = runLiveRally(draft, week, match);
+    if (step.scenario && live.scenario) {
+      const sorted = [...live.scenario.options].sort((a, b) => (b.impact?.team || 0) - (a.impact?.team || 0));
+      const pickIndex = randomInt(0, Math.min(1, sorted.length - 1));
+      applyLiveScenarioChoice(draft, week, match, sorted[pickIndex].id);
+    }
     safety += 1;
   }
   return { ok: true };
@@ -1290,8 +1746,7 @@ function finalizeLiveResult(draft, week, match, opponent, context) {
   const played = completeLeagueMatch(draft, week, match, opponent, context, varsityResult, {
     live: {
       rallies: live.rallyCount,
-      timeoutsUsed: live.totalTimeoutsUsed,
-      subsUsed: live.totalSubsUsed
+      scenarios: live.scenarioLog.length
     }
   });
   return played;
@@ -1300,11 +1755,14 @@ function finalizeLiveResult(draft, week, match, opponent, context) {
 function playLeagueMatch(draft, weekId, matchId) {
   const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
   if (!week || week.kind !== "league" || !week.focusLocked) {
-    return { ok: false, message: "Lock a weekly focus before playing matches." };
+    return { ok: false, message: "Lock your weekly energy plan before playing matches." };
   }
   const match = week.matches.find((candidate) => candidate.id === matchId);
   if (!match || match.status === "played") {
     return { ok: false, message: "Match already completed." };
+  }
+  if (match.status === "pregame") {
+    return { ok: false, message: "Finish this match setup first." };
   }
   if (match.status === "live") {
     return { ok: false, message: "This match is already in progress." };
@@ -1313,18 +1771,37 @@ function playLeagueMatch(draft, weekId, matchId) {
     return { ok: false, message: "Finish the current live match before starting another." };
   }
 
-  const opponent = findTeamById(draft, match.opponentId);
-  const context = buildLeagueMatchContext(draft, week, match, opponent);
+  applyWeeklyEnergyScouting(draft, week);
+  const varsity = getVarsityPlayers(draft).sort((a, b) => playerOverall(b) - playerOverall(a));
+  const defaultLineup = varsity.slice(0, 6).map((player) => player.id);
+  const bench = varsity.slice(6).map((player) => player.id);
+  match.status = "pregame";
+  match.pregame = {
+    gameplan: "balanced",
+    lineupIds: defaultLineup,
+    benchIds: bench
+  };
+  return { ok: true, pregameOpened: true, message: `Match prep opened vs ${match.opponentName}.` };
+}
 
-  if (match.control.mode === "manual") {
-    match.status = "live";
-    match.live = createLiveMatchSession(match, context, opponent);
-    return { ok: true, liveStarted: true, message: `Live match started vs ${match.opponentName}.` };
+function lockMatchPregame(draft, weekId, matchId) {
+  const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
+  if (!week || week.kind !== "league") return { ok: false, message: "Week not found." };
+  const match = week.matches.find((candidate) => candidate.id === matchId);
+  if (!match || match.status !== "pregame" || !match.pregame) {
+    return { ok: false, message: "No pregame setup to lock." };
   }
-
-  const varsityResult = simulateBestOfFive(context.teamPower, context.opponentPower);
-  const played = completeLeagueMatch(draft, week, match, opponent, context, varsityResult);
-  return { ok: true, played };
+  const lineupIds = match.pregame.lineupIds || [];
+  if (lineupIds.length !== 6) {
+    return { ok: false, message: "Select exactly 6 starters before locking pregame." };
+  }
+  const opponent = findTeamById(draft, match.opponentId);
+  const context = buildLeagueMatchContext(draft, week, match, opponent, match.pregame);
+  match.gameplan = match.pregame.gameplan;
+  match.status = "live";
+  match.live = createLiveMatchSession(match, context, opponent, match.pregame);
+  gainOpponentIntel(draft, opponent.id, 6 + Math.floor((week.energy?.scouting || 0) / 16), "Pregame film study");
+  return { ok: true, liveStarted: true, message: `Live match started vs ${match.opponentName}.` };
 }
 
 function runLiveMatchAction(draft, weekId, matchId, action) {
@@ -1335,32 +1812,55 @@ function runLiveMatchAction(draft, weekId, matchId, action) {
 
   const opponent = findTeamById(draft, match.opponentId);
   const context = {
-    teamContext: computeVaristyPowerForMatch(draft, week, opponent),
+    teamContext: computeVaristyPowerForMatch(draft, week, opponent, match.live.lineupIds),
     teamPower: match.live.teamPower,
-    opponentPower: match.live.opponentPower
+    opponentPower: match.live.opponentPower,
+    gameplan: match.live.gameplan,
+    lineupIds: match.live.lineupIds
   };
+  if (action.startsWith("scenario:")) {
+    const optionId = action.slice("scenario:".length);
+    const applied = applyLiveScenarioChoice(draft, week, match, optionId);
+    if (!applied.ok) return applied;
+    return { ok: true, message: `Scenario choice: ${applied.message}.` };
+  }
 
-  if (action === "timeout") {
-    return useLiveTimeout(match.live);
-  }
-  if (action === "sub") {
-    return useLiveSubstitution(match.live);
-  }
   if (action === "autoplay-set") {
-    autoplayCurrentSet(match.live);
+    autoplayCurrentSet(draft, week, match);
   } else if (action === "finish") {
-    autoplayEntireLiveMatch(match.live);
+    autoplayEntireLiveMatch(draft, week, match);
   } else {
-    runLiveRally(match.live);
+    const step = runLiveRally(draft, week, match);
+    if (!step.ok) return step;
   }
 
   if (match.live.finished) {
+    gainOpponentIntel(
+      draft,
+      opponent.id,
+      12 + Math.floor((week.energy?.scouting || 0) / 10) + (match.live.setsWonTeam > match.live.setsWonOpp ? 2 : 0),
+      "Match film completed"
+    );
+    const intel = draft.season.opponentIntel?.[opponent.id];
+    if (intel) {
+      intel.gamesSeen += 1;
+      intel.yourExposure = clamp(intel.yourExposure + randomInt(4, 11), 0, 100);
+    }
     const played = finalizeLiveResult(draft, week, match, opponent, context);
     return {
       ok: true,
       completed: true,
       played,
       message: `Live match complete: Varsity ${played.varsity.scoreLine}.`
+    };
+  }
+
+  if (match.live.scenario) {
+    return {
+      ok: true,
+      completed: false,
+      scenario: match.live.scenario,
+      message: `Scenario: ${match.live.scenario.title}`
     };
   }
 
@@ -1430,7 +1930,9 @@ function simulateRoundRobinPool(teams) {
 }
 
 function generateTournamentField(draft, tournament) {
-  const userStrength = Math.round(computeRosterPower(getVarsityPlayers(draft)) + draft.career.divisionIndex * 2);
+  const varsity = getVarsityPlayers(draft);
+  const captainEffect = calculateCaptainEffect(draft, "varsity", varsity);
+  const userStrength = Math.round(computeRosterPower(varsity) + captainEffect + draft.career.divisionIndex * 2);
   const userTeam = {
     id: "user_team",
     name: `${draft.career.schoolName} ${draft.career.mascot}`,
@@ -1489,13 +1991,14 @@ function simulateBracket(entries, label) {
 function simulateTournamentWeek(draft, weekId) {
   const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
   if (!week || week.kind !== "tournament" || !week.focusLocked || week.status === "completed") {
-    return { ok: false, message: "Lock focus first and run this tournament once." };
+    return { ok: false, message: "Lock your weekly energy plan first and run this tournament once." };
   }
 
   const tournament = findTournamentById(week.tournamentId);
   if (!tournament) {
     return { ok: false, message: "Tournament selection is invalid." };
   }
+  applyWeeklyEnergyScouting(draft, week);
 
   const field = generateTournamentField(draft, tournament);
   const pools = [field.slice(0, 4), field.slice(4, 8), field.slice(8, 12), field.slice(12, 16)];
@@ -1641,6 +2144,13 @@ function advanceWeek(draft) {
   if (!week) return { ok: false, message: "No current week." };
   if (!allWeekMatchesComplete(week)) {
     return { ok: false, message: "Finish all matches/events first." };
+  }
+  if (week.kind === "league") {
+    simulateBackgroundLeagueWeek(draft, week);
+  }
+  for (const intel of Object.values(draft.season.opponentIntel || {})) {
+    intel.knowledge = clamp(intel.knowledge + 1.5 + draft.career.upgrades.scouting * 0.2, 0, 100);
+    refreshIntelUnlocks(intel);
   }
   week.status = "completed";
   draft.season.weekIndex += 1;
@@ -2051,6 +2561,10 @@ function progressProgramForNextSeason(draft) {
     varsityIds: [],
     jvIds: []
   };
+  draft.team.captains = {
+    varsityId: null,
+    jvId: null
+  };
   draft.phase = "tryouts";
   const transferInterest = draft.offseason?.transferInterest || 0;
   const summary = {
@@ -2097,6 +2611,10 @@ function createInitialState() {
       rosters: {
         varsityIds: [],
         jvIds: []
+      },
+      captains: {
+        varsityId: null,
+        jvId: null
       }
     },
     program: {
@@ -2238,23 +2756,114 @@ function isValidStateShape(candidate) {
   );
 }
 
+function migrateLegacyPlayer(player) {
+  if (!player || typeof player !== "object") return player;
+  const migrated = { ...player };
+  migrated.gender = "M";
+  const athleticismSeed = migrated.athleticism ?? migrated.resilience ?? 58;
+  const defenseSeed = migrated.defense ?? migrated.passing ?? 58;
+  const attackSeed = migrated.attack ?? migrated.hitting ?? 58;
+  const serveSeed = migrated.serve ?? migrated.serving ?? 58;
+  const blockSeed = migrated.block ?? migrated.blocking ?? 58;
+  const settingSeed = migrated.setting ?? 58;
+
+  migrated.serving = clamp(migrated.serving ?? serveSeed, 30, 99);
+  migrated.passing = clamp(migrated.passing ?? defenseSeed, 30, 99);
+  migrated.setting = clamp(migrated.setting ?? settingSeed, 30, 99);
+  migrated.hitting = clamp(migrated.hitting ?? attackSeed, 30, 99);
+  migrated.blocking = clamp(migrated.blocking ?? blockSeed, 30, 99);
+  migrated.awareness = clamp(
+    migrated.awareness ?? Math.round((defenseSeed + settingSeed) / 2 + randomInt(-4, 4)),
+    30,
+    99
+  );
+  migrated.resilience = clamp(
+    migrated.resilience ?? Math.round((athleticismSeed + defenseSeed) / 2 + randomInt(-4, 4)),
+    30,
+    99
+  );
+  migrated.leadership = clamp(
+    migrated.leadership ?? Math.round((migrated.morale ?? 70) * 0.9) + randomInt(-4, 4),
+    30,
+    99
+  );
+
+  const defaultHeight = clamp(positionHeightBaseline(migrated.position || "OH") + randomInt(-3, 3), 64, 82);
+  migrated.heightInches = clamp(migrated.heightInches ?? defaultHeight, 64, 82);
+  migrated.standingReach = clamp(
+    migrated.standingReach ?? migrated.heightInches + randomInt(20, 27),
+    86,
+    112
+  );
+  migrated.blockTouch = clamp(
+    migrated.blockTouch ?? migrated.standingReach + randomInt(13, 24),
+    96,
+    132
+  );
+  migrated.approachTouch = clamp(
+    migrated.approachTouch ?? migrated.blockTouch + randomInt(2, 8),
+    99,
+    138
+  );
+
+  migrated.xp = migrated.xp ?? 0;
+  migrated.morale = clamp(migrated.morale ?? 70, 30, 99);
+  migrated.seasonStats = migrated.seasonStats || { setsPlayed: 0, impact: 0 };
+  migrated.potential = clamp(
+    migrated.potential ??
+      Math.round(playerOverall(migrated) + 10 + physicalPotentialContribution(migrated) / 2 + randomInt(-4, 7)),
+    45,
+    99
+  );
+  return migrated;
+}
+
 function normalizeLoadedState(loaded) {
   const normalized = loaded;
   normalized.notices = normalized.notices || [];
   normalized.preseason = normalized.preseason || { selectedTournamentIds: [] };
   normalized.team = normalized.team || { chemistry: 55, rosters: { varsityIds: [], jvIds: [] } };
   normalized.team.rosters = normalized.team.rosters || { varsityIds: [], jvIds: [] };
+  normalized.team.captains = normalized.team.captains || { varsityId: null, jvId: null };
   normalized.program = normalized.program || {
     rosterPlayers: [],
     freeAgents: [],
     noShowPlayers: [],
     returningRosterIds: []
   };
-  normalized.program.rosterPlayers = normalized.program.rosterPlayers || [];
-  normalized.program.freeAgents = normalized.program.freeAgents || [];
-  normalized.program.noShowPlayers = normalized.program.noShowPlayers || [];
+  normalized.program.rosterPlayers = (normalized.program.rosterPlayers || []).map(migrateLegacyPlayer);
+  normalized.program.freeAgents = (normalized.program.freeAgents || []).map(migrateLegacyPlayer);
+  normalized.program.noShowPlayers = (normalized.program.noShowPlayers || []).map(migrateLegacyPlayer);
   normalized.program.returningRosterIds = normalized.program.returningRosterIds || [];
-  normalized.program.incomingCommits = normalized.program.incomingCommits || [];
+  normalized.program.incomingCommits = (normalized.program.incomingCommits || []).map(migrateLegacyPlayer);
+  const rosterIds = new Set(normalized.program.rosterPlayers.map((player) => player.id));
+  if (!rosterIds.has(normalized.team.captains.varsityId)) normalized.team.captains.varsityId = null;
+  if (!rosterIds.has(normalized.team.captains.jvId)) normalized.team.captains.jvId = null;
+  if (!normalized.team.captains.varsityId && normalized.team.rosters.varsityIds?.length) {
+    normalized.team.captains.varsityId = autoCaptainFromRosterIds(normalized, normalized.team.rosters.varsityIds);
+  }
+  if (!normalized.team.captains.jvId && normalized.team.rosters.jvIds?.length) {
+    normalized.team.captains.jvId = autoCaptainFromRosterIds(normalized, normalized.team.rosters.jvIds);
+  }
+  if (normalized.tryouts?.candidates) {
+    normalized.tryouts.candidates = normalized.tryouts.candidates.map(migrateLegacyPlayer);
+    normalized.tryouts.captainSelections = normalized.tryouts.captainSelections || {
+      varsityId: null,
+      jvId: null
+    };
+    if (
+      normalized.tryouts.captainSelections.varsityId &&
+      normalized.tryouts.assignments?.[normalized.tryouts.captainSelections.varsityId] !== "varsity"
+    ) {
+      normalized.tryouts.captainSelections.varsityId = null;
+    }
+    if (
+      normalized.tryouts.captainSelections.jvId &&
+      normalized.tryouts.assignments?.[normalized.tryouts.captainSelections.jvId] !== "jv"
+    ) {
+      normalized.tryouts.captainSelections.jvId = null;
+    }
+  }
   normalized.meta = normalized.meta || { nextPlayerCounter: 1, lastAction: "hydrate" };
   normalized.meta.nextPlayerCounter = normalized.meta.nextPlayerCounter || 1;
   normalized.meta.nextRecruitCounter = normalized.meta.nextRecruitCounter || 1;
@@ -2269,10 +2878,49 @@ function normalizeLoadedState(loaded) {
     }
   }
   if (normalized.phase === "season" && normalized.season?.weeks) {
+    normalized.season.viewTab = normalized.season.viewTab || "matchday";
+    normalized.season.opponentIntel = normalized.season.opponentIntel || initializeOpponentIntel(normalized);
+    for (const intel of Object.values(normalized.season.opponentIntel || {})) {
+      intel.knowledge = clamp(intel.knowledge ?? 0, 0, 100);
+      intel.gamesSeen = intel.gamesSeen || 0;
+      intel.notes = intel.notes || [];
+      intel.strengthTrait = intel.strengthTrait || "offense";
+      intel.weaknessTrait = intel.weaknessTrait || "defense";
+      intel.counterToStrength = intel.counterToStrength || counterForTrait(intel.strengthTrait, "strength");
+      intel.counterToWeakness = intel.counterToWeakness || counterForTrait(intel.weaknessTrait, "weakness");
+      intel.yourExposure = clamp(intel.yourExposure || 0, 0, 100);
+      refreshIntelUnlocks(intel);
+    }
+    if (!normalized.season.leagueStandings) {
+      normalized.season.leagueStandings = buildLeagueStandingsMap(normalized.world.leagues[0]);
+      const leagueResults = (normalized.season.matchesPlayed || []).filter((match) => match.type === "league");
+      for (const match of leagueResults) {
+        if (!match.opponentId) continue;
+        applyLeagueResultToStandings(
+          normalized.season.leagueStandings,
+          "user_team",
+          match.opponentId,
+          match.varsity?.won ?? false,
+          match.varsity?.teamSets ?? 0,
+          match.varsity?.oppSets ?? 0
+        );
+      }
+    }
     for (const week of normalized.season.weeks) {
+      week.energy = week.energy || { scouting: 34, individual: 33, team: 33 };
+      week.energyTargetPlayerId = week.energyTargetPlayerId || week.focusTargetPlayerId || null;
+      week.scoutingApplied = Boolean(week.scoutingApplied);
+      week.opponentInvestments = week.opponentInvestments || {};
+      if (week.kind === "league" && week.backgroundSimulated == null) {
+        week.backgroundSimulated = week.status === "completed";
+      }
       if (week.kind !== "league" || !week.matches) continue;
       for (const match of week.matches) {
+        if (!match.pregame) match.pregame = null;
         if (match.status === "live" && !match.live) {
+          match.status = "pending";
+        }
+        if (match.status === "pregame" && !match.pregame) {
           match.status = "pending";
         }
       }
@@ -2338,6 +2986,7 @@ function startCareerFromOnboarding(draft, coachName, schoolName, mascot) {
   draft.career.mascot = mascot || "Falcons";
   draft.world = createWorldForSeason(draft.career, draft.career.schoolName, draft.career.mascot);
   draft.team.chemistry = 55;
+  draft.team.captains = { varsityId: null, jvId: null };
   draft.program.incomingCommits = [];
   draft.phase = "tryouts";
   generateTryoutPool(draft);
@@ -2360,12 +3009,16 @@ function getCurrentWeek() {
 }
 
 function canStartSeason(currentState) {
-  return currentState.preseason.selectedTournamentIds.length === 2;
+  return (
+    currentState.preseason.selectedTournamentIds.length === 2 &&
+    Boolean(currentState.team.captains?.varsityId) &&
+    Boolean(currentState.team.captains?.jvId)
+  );
 }
 
 function startSeason(draft) {
   if (!canStartSeason(draft)) {
-    return { ok: false, message: "Select exactly two tournaments." };
+    return { ok: false, message: "Select two tournaments and set both captains before starting." };
   }
   initializeSeasonState(draft);
   draft.phase = "season";
@@ -2431,6 +3084,12 @@ function handleClick(event) {
       (draft) => {
         if (!draft.tryouts?.assignments[playerId]) return;
         draft.tryouts.assignments[playerId] = value;
+        if (draft.tryouts.captainSelections?.varsityId === playerId && value !== "varsity") {
+          draft.tryouts.captainSelections.varsityId = null;
+        }
+        if (draft.tryouts.captainSelections?.jvId === playerId && value !== "jv") {
+          draft.tryouts.captainSelections.jvId = null;
+        }
       },
       `set-assignment-${value}`
     );
@@ -2494,24 +3153,40 @@ function handleClick(event) {
       (draft) => {
         const week = getCurrentWeekFromDraft(draft);
         if (!week) return;
-        if (!week.focus) {
-          draft.notices = [{ id: Date.now(), tone: "bad", message: "Select one weekly focus before locking." }];
+        const energy = week.energy || { scouting: 0, individual: 0, team: 0 };
+        const total = (energy.scouting || 0) + (energy.individual || 0) + (energy.team || 0);
+        if (total !== 100) {
+          draft.notices = [{ id: Date.now(), tone: "bad", message: "Weekly energy allocation must total exactly 100%." }];
           return;
         }
-        if (week.focus === "individual" && !week.focusTargetPlayerId) {
-          draft.notices = [{ id: Date.now(), tone: "bad", message: "Pick a player for the individual plan." }];
+        if ((energy.individual || 0) >= 15 && !week.energyTargetPlayerId) {
+          draft.notices = [{ id: Date.now(), tone: "bad", message: "Pick a player target for individual development." }];
           return;
         }
         week.focusLocked = true;
+        applyWeeklyEnergyScouting(draft, week);
         draft.notices = [
           {
             id: Date.now(),
             tone: "good",
-            message: `Weekly focus locked: ${friendlyFocusLabel(week.focus)}.`
+            message: `Weekly energy locked: Scout ${energy.scouting}%, Individual ${energy.individual}%, Team ${energy.team}%.`
           }
         ];
       },
       "lock-week-focus"
+    );
+    return;
+  }
+
+  if (action === "season-tab") {
+    const tab = target.dataset.tab;
+    mutate(
+      (draft) => {
+        if (!draft.season) return;
+        if (!["matchday", "standings", "players"].includes(tab)) return;
+        draft.season.viewTab = tab;
+      },
+      "season-tab"
     );
     return;
   }
@@ -2527,7 +3202,9 @@ function handleClick(event) {
             id: Date.now(),
             tone: result.ok ? "good" : "bad",
             message: result.ok
-              ? result.liveStarted
+              ? result.pregameOpened
+                ? result.message
+                : result.liveStarted
                 ? result.message
                 : `Match complete: ${result.played.opponentName}, Varsity ${result.played.varsity.scoreLine}.`
               : result.message
@@ -2539,19 +3216,22 @@ function handleClick(event) {
     return;
   }
 
-  if (action === "live-rally" || action === "live-timeout" || action === "live-sub" || action === "live-autoplay-set" || action === "live-finish") {
+  if (action === "lock-pregame" || action === "live-rally" || action === "live-autoplay-set" || action === "live-finish" || action === "live-scenario-choice") {
     const weekId = target.dataset.weekId;
     const matchId = target.dataset.matchId;
     const actionMap = {
+      "lock-pregame": "lock-pregame",
       "live-rally": "rally",
-      "live-timeout": "timeout",
-      "live-sub": "sub",
       "live-autoplay-set": "autoplay-set",
-      "live-finish": "finish"
+      "live-finish": "finish",
+      "live-scenario-choice": `scenario:${target.dataset.optionId}`
     };
     mutate(
       (draft) => {
-        const result = runLiveMatchAction(draft, weekId, matchId, actionMap[action]);
+        const result =
+          action === "lock-pregame"
+            ? lockMatchPregame(draft, weekId, matchId)
+            : runLiveMatchAction(draft, weekId, matchId, actionMap[action]);
         draft.notices = [
           {
             id: Date.now(),
@@ -2791,34 +3471,51 @@ function handleChange(event) {
   const action = target.dataset.action;
   if (!action) return;
 
-  if (action === "week-focus") {
+  if (action === "week-energy") {
     mutate(
       (draft) => {
         const week = getCurrentWeekFromDraft(draft);
         if (!week || week.focusLocked) return;
-        week.focus = target.value;
-        if (week.focus !== "individual") {
-          week.focusTargetPlayerId = null;
+        const key = target.dataset.energyKey;
+        if (!["scouting", "individual", "team"].includes(key)) return;
+        week.energy[key] = clamp(Number(target.value), 0, 100);
+      },
+      "week-energy"
+    );
+    return;
+  }
+
+  if (action === "tryout-captain-varsity" || action === "tryout-captain-jv") {
+    mutate(
+      (draft) => {
+        if (!draft.tryouts) return;
+        const value = target.value || null;
+        if (action === "tryout-captain-varsity") {
+          if (value && draft.tryouts.assignments[value] !== "varsity") return;
+          draft.tryouts.captainSelections.varsityId = value;
+          return;
         }
+        if (value && draft.tryouts.assignments[value] !== "jv") return;
+        draft.tryouts.captainSelections.jvId = value;
       },
-      "week-focus"
+      action
     );
     return;
   }
 
-  if (action === "focus-player") {
+  if (action === "week-energy-player") {
     mutate(
       (draft) => {
         const week = getCurrentWeekFromDraft(draft);
         if (!week || week.focusLocked) return;
-        week.focusTargetPlayerId = target.value || null;
+        week.energyTargetPlayerId = target.value || null;
       },
-      "focus-player"
+      "week-energy-player"
     );
     return;
   }
 
-  if (action === "match-gameplan") {
+  if (action === "pregame-gameplan") {
     const weekId = target.dataset.weekId;
     const matchId = target.dataset.matchId;
     mutate(
@@ -2826,58 +3523,38 @@ function handleChange(event) {
         const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
         if (!week || week.kind !== "league") return;
         const match = week.matches.find((candidate) => candidate.id === matchId);
-        if (!match || match.status !== "pending") return;
-        match.gameplan = target.value;
+        if (!match || match.status !== "pregame" || !match.pregame) return;
+        match.pregame.gameplan = target.value;
       },
-      "match-gameplan"
+      "pregame-gameplan"
     );
     return;
   }
 
-  if (action === "match-control-mode") {
+  if (action === "pregame-lineup") {
     const weekId = target.dataset.weekId;
     const matchId = target.dataset.matchId;
+    const playerId = target.dataset.playerId;
+    const checked = target.checked;
     mutate(
       (draft) => {
         const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
         if (!week || week.kind !== "league") return;
         const match = week.matches.find((candidate) => candidate.id === matchId);
-        if (!match || match.status !== "pending") return;
-        match.control.mode = target.value;
+        if (!match || match.status !== "pregame" || !match.pregame) return;
+        const ids = new Set(match.pregame.lineupIds || []);
+        if (checked) {
+          ids.add(playerId);
+        } else {
+          ids.delete(playerId);
+        }
+        const array = [...ids];
+        if (array.length > 6) return;
+        match.pregame.lineupIds = array;
+        const varsityIds = new Set(getVarsityPlayers(draft).map((player) => player.id));
+        match.pregame.benchIds = [...varsityIds].filter((id) => !ids.has(id));
       },
-      "match-control-mode"
-    );
-    return;
-  }
-
-  if (action === "match-timeouts") {
-    const weekId = target.dataset.weekId;
-    const matchId = target.dataset.matchId;
-    mutate(
-      (draft) => {
-        const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
-        if (!week || week.kind !== "league") return;
-        const match = week.matches.find((candidate) => candidate.id === matchId);
-        if (!match || match.status !== "pending") return;
-        match.control.timeoutsPerSet = clamp(Number(target.value), 0, 2);
-      },
-      "match-timeouts"
-    );
-    return;
-  }
-
-  if (action === "match-subs") {
-    const weekId = target.dataset.weekId;
-    const matchId = target.dataset.matchId;
-    mutate(
-      (draft) => {
-        const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
-        if (!week || week.kind !== "league") return;
-        const match = week.matches.find((candidate) => candidate.id === matchId);
-        if (!match || match.status !== "pending") return;
-        match.control.substitutions = clamp(Number(target.value), 0, 15);
-      },
-      "match-subs"
+      "pregame-lineup"
     );
     return;
   }
@@ -2895,42 +3572,8 @@ function handleChange(event) {
     return;
   }
 
-  if (action === "tournament-control-mode") {
-    const weekId = target.dataset.weekId;
-    mutate(
-      (draft) => {
-        const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
-        if (!week || week.kind !== "tournament" || week.status === "completed") return;
-        week.control.mode = target.value;
-      },
-      "tournament-control-mode"
-    );
+  if (action === "tournament-control-mode" || action === "tournament-timeouts" || action === "tournament-subs") {
     return;
-  }
-
-  if (action === "tournament-timeouts") {
-    const weekId = target.dataset.weekId;
-    mutate(
-      (draft) => {
-        const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
-        if (!week || week.kind !== "tournament" || week.status === "completed") return;
-        week.control.timeoutsPerSet = clamp(Number(target.value), 0, 2);
-      },
-      "tournament-timeouts"
-    );
-    return;
-  }
-
-  if (action === "tournament-subs") {
-    const weekId = target.dataset.weekId;
-    mutate(
-      (draft) => {
-        const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
-        if (!week || week.kind !== "tournament" || week.status === "completed") return;
-        week.control.substitutions = clamp(Number(target.value), 0, 15);
-      },
-      "tournament-subs"
-    );
   }
 }
 
@@ -2994,6 +3637,8 @@ function renderSidebar() {
     .slice()
     .sort((a, b) => playerOverall(b) - playerOverall(a))
     .slice(0, 8);
+  const varsityCaptain = state.program.rosterPlayers.find((player) => player.id === state.team.captains?.varsityId);
+  const jvCaptain = state.program.rosterPlayers.find((player) => player.id === state.team.captains?.jvId);
 
   return `
     <div class="stack">
@@ -3030,6 +3675,8 @@ function renderSidebar() {
               </table>`
             : `<p class="subtle">Rosters will appear after tryouts.</p>`
         }
+        <p class="footnote" style="margin-top:0.55rem;">V Captain: ${varsityCaptain ? `${varsityCaptain.name} (LDR ${varsityCaptain.leadership})` : "Not set"}</p>
+        <p class="footnote">JV Captain: ${jvCaptain ? `${jvCaptain.name} (LDR ${jvCaptain.leadership})` : "Not set"}</p>
       </div>
 
       <div class="card">
@@ -3083,12 +3730,18 @@ function renderTryouts() {
   }
   const candidates = state.tryouts?.candidates || [];
   const counts = recalcRosterAssignmentsCounts(state.tryouts);
+  const varsityCandidates = candidates
+    .filter((player) => state.tryouts.assignments[player.id] === "varsity")
+    .sort((a, b) => b.leadership - a.leadership);
+  const jvCandidates = candidates
+    .filter((player) => state.tryouts.assignments[player.id] === "jv")
+    .sort((a, b) => b.leadership - a.leadership);
 
   return `
     <div class="stack">
       <div class="card">
         <h2>Tryouts</h2>
-        <p class="subtle">Select exactly 12 Varsity and 12 JV players. Balance current skill, potential, chemistry, and returning continuity.</p>
+        <p class="subtle">Select exactly 12 Varsity and 12 JV players. Set one captain for each team. Captains with high leadership provide a match boost only when they can stay on the court.</p>
         <div class="grid-three" style="margin-top:0.7rem;">
           <div class="kpi"><strong>${state.tryouts.summary.returning}</strong><span>Returning Tryouts</span></div>
           <div class="kpi"><strong>${state.tryouts.summary.transfers}</strong><span>Transfers</span></div>
@@ -3106,17 +3759,56 @@ function renderTryouts() {
             <button class="btn btn-secondary" data-action="tryout-autofill" data-mode="potential">Auto by Potential</button>
           </div>
         </div>
+        <div class="grid-two" style="margin-top:0.8rem;">
+          <label>
+            Varsity Captain
+            <select class="select" data-action="tryout-captain-varsity">
+              <option value="">Select Varsity captain</option>
+              ${varsityCandidates
+                .map(
+                  (player) =>
+                    `<option value="${player.id}" ${state.tryouts.captainSelections?.varsityId === player.id ? "selected" : ""}>${player.name} (OVR ${playerOverall(player)}, LDR ${player.leadership})</option>`
+                )
+                .join("")}
+            </select>
+          </label>
+          <label>
+            JV Captain
+            <select class="select" data-action="tryout-captain-jv">
+              <option value="">Select JV captain</option>
+              ${jvCandidates
+                .map(
+                  (player) =>
+                    `<option value="${player.id}" ${state.tryouts.captainSelections?.jvId === player.id ? "selected" : ""}>${player.name} (OVR ${playerOverall(player)}, LDR ${player.leadership})</option>`
+                )
+                .join("")}
+            </select>
+          </label>
+        </div>
       </div>
 
       <div class="card">
+        <div style="overflow-x:auto;">
         <table>
           <thead>
             <tr>
               <th>Player</th>
               <th>Pos</th>
               <th>Yr</th>
+              <th class="right">Ht</th>
+              <th class="right">Reach</th>
+              <th class="right">BT</th>
+              <th class="right">AT</th>
               <th class="right">OVR</th>
               <th class="right">Potential (est.)</th>
+              <th class="right">SV</th>
+              <th class="right">PS</th>
+              <th class="right">ST</th>
+              <th class="right">HT</th>
+              <th class="right">BL</th>
+              <th class="right">AW</th>
+              <th class="right">RS</th>
+              <th class="right">LD</th>
               <th>Origin</th>
               <th>Assign</th>
             </tr>
@@ -3132,8 +3824,20 @@ function renderTryouts() {
                     <td>${player.name}</td>
                     <td>${player.position}</td>
                     <td>${gradeLabel(player.grade)}</td>
+                    <td class="right">${formatHeight(player.heightInches)}</td>
+                    <td class="right">${player.standingReach}</td>
+                    <td class="right">${player.blockTouch}</td>
+                    <td class="right">${player.approachTouch}</td>
                     <td class="right">${playerOverall(player)}</td>
                     <td class="right">${estimated}</td>
+                    <td class="right">${player.serving}</td>
+                    <td class="right">${player.passing}</td>
+                    <td class="right">${player.setting}</td>
+                    <td class="right">${player.hitting}</td>
+                    <td class="right">${player.blocking}</td>
+                    <td class="right">${player.awareness}</td>
+                    <td class="right">${player.resilience}</td>
+                    <td class="right">${player.leadership}</td>
                     <td>${player.origin}</td>
                     <td>
                       <button class="btn btn-secondary" data-action="set-assignment" data-player-id="${player.id}" data-value="varsity" ${assignment === "varsity" ? "disabled" : ""}>V</button>
@@ -3146,6 +3850,7 @@ function renderTryouts() {
               .join("")}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div class="card">
@@ -3157,6 +3862,7 @@ function renderTryouts() {
 
 function renderPreseason() {
   const selected = state.preseason.selectedTournamentIds;
+  const hasCaptains = Boolean(state.team.captains?.varsityId) && Boolean(state.team.captains?.jvId);
   return `
     <div class="stack">
       <div class="card">
@@ -3166,8 +3872,9 @@ function renderPreseason() {
           <div>
             <span class="tag">Selected ${selected.length}/2</span>
           </div>
-          <button class="btn btn-primary" data-action="start-season" ${selected.length === 2 ? "" : "disabled"}>Start Season</button>
+          <button class="btn btn-primary" data-action="start-season" ${(selected.length === 2 && hasCaptains) ? "" : "disabled"}>Start Season</button>
         </div>
+        ${!hasCaptains ? `<p class="footnote">Captain selection required for JV and Varsity before season start.</p>` : ""}
       </div>
 
       <div class="card">
@@ -3210,33 +3917,36 @@ function renderPreseason() {
 
 function renderWeeklyFocus(week) {
   const varsity = getVarsityPlayers(state);
+  const energy = week.energy || { scouting: 34, individual: 33, team: 33 };
+  const total = (energy.scouting || 0) + (energy.individual || 0) + (energy.team || 0);
   return `
     <div class="card">
-      <h3>Week ${week.weekNumber} Focus</h3>
+      <h3>Week ${week.weekNumber} Energy Plan</h3>
       <p class="subtle">M/W/F are practice sessions. Tue/Thu are game nights (JV first, Varsity second).</p>
-      <div class="stack">
-        ${WEEKLY_FOCUS_OPTIONS.map(
-          (focus) => `
-          <label>
-            <input type="radio" name="week-focus" data-action="week-focus" value="${focus.id}" ${week.focus === focus.id ? "checked" : ""} ${week.focusLocked ? "disabled" : ""} />
-            <strong>${focus.label}</strong>
-            <span class="subtle">${focus.detail}</span>
-          </label>
-        `
+      <div class="grid-three">
+        ${WEEKLY_ENERGY_AREAS.map(
+          (area) => `
+            <label>
+              <strong>${area.label}</strong>
+              <div class="subtle">${area.detail}</div>
+              <input class="input" type="number" min="0" max="100" step="1" value="${energy[area.id] || 0}" data-action="week-energy" data-energy-key="${area.id}" ${week.focusLocked ? "disabled" : ""} />
+            </label>
+          `
         ).join("")}
       </div>
+      <p class="footnote">Current allocation: ${total}% (must equal 100%).</p>
       ${
-        week.focus === "individual"
+        (energy.individual || 0) > 0
           ? `
           <div style="margin-top:0.6rem;">
             <label>
-              Target Player
-              <select class="select" data-action="focus-player" ${week.focusLocked ? "disabled" : ""}>
+              Individual Development Target
+              <select class="select" data-action="week-energy-player" ${week.focusLocked ? "disabled" : ""}>
                 <option value="">Choose player</option>
                 ${varsity
                   .map(
                     (player) =>
-                      `<option value="${player.id}" ${week.focusTargetPlayerId === player.id ? "selected" : ""}>${player.name} (${player.position}, OVR ${playerOverall(player)})</option>`
+                      `<option value="${player.id}" ${week.energyTargetPlayerId === player.id ? "selected" : ""}>${player.name} (${player.position}, OVR ${playerOverall(player)})</option>`
                   )
                   .join("")}
               </select>
@@ -3245,12 +3955,19 @@ function renderWeeklyFocus(week) {
         `
           : ""
       }
-      <button style="margin-top:0.7rem;" class="btn btn-primary" data-action="lock-week-focus" ${week.focusLocked ? "disabled" : ""}>${week.focusLocked ? "Focus Locked" : "Lock Weekly Plan"}</button>
+      <button style="margin-top:0.7rem;" class="btn btn-primary" data-action="lock-week-focus" ${week.focusLocked ? "disabled" : ""}>${week.focusLocked ? "Energy Locked" : "Lock Weekly Energy"}</button>
     </div>
   `;
 }
 
 function renderMatchCard(week, match) {
+  const opponent = findTeamById(state, match.opponentId);
+  const intel = state.season?.opponentIntel?.[match.opponentId];
+  const intelLevel = evaluateWeeklyEffects(state, week, match.opponentId).intelLevel;
+  const hasLiveMatch = week.matches.some((candidate) => candidate.status === "live");
+  const fuzz = intelLevel > 1.8 ? 2 : intelLevel > 1.1 ? 4 : 9;
+  const showRange = (value) => `${clamp(value - fuzz, 30, 99)}-${clamp(value + fuzz, 30, 99)}`;
+
   if (match.status === "played") {
     return `
       <div class="card">
@@ -3260,9 +3977,53 @@ function renderMatchCard(week, match) {
         <p class="footnote">Gameplan: ${GAMEPLAN_OPTIONS.find((option) => option.id === match.gameplan)?.label}. Ranking +${match.result.rankingGain}.</p>
         ${
           match.result.live
-            ? `<p class="footnote">Live mode: ${match.result.live.rallies} rallies, ${match.result.live.timeoutsUsed} TO used, ${match.result.live.subsUsed} subs used.</p>`
+            ? `<p class="footnote">Live mode: ${match.result.live.rallies} rallies, ${match.result.live.scenarios} scenario events.</p>`
             : ""
         }
+      </div>
+    `;
+  }
+
+  if (match.status === "pregame" && match.pregame) {
+    const varsity = getVarsityPlayers(state).slice().sort((a, b) => playerOverall(b) - playerOverall(a));
+    const lineupIds = new Set(match.pregame.lineupIds || []);
+    const intelHints = [];
+    if (intel?.playstyleKnown) intelHints.push("Playstyle mapped");
+    if (intel?.strengthKnown) intelHints.push(`Strength: ${traitLabel(intel.strengthTrait)}`);
+    if (intel?.weaknessKnown) intelHints.push(`Weakness: ${traitLabel(intel.weaknessTrait)}`);
+    if (intel?.countersKnown) {
+      const counterA = GAMEPLAN_OPTIONS.find((option) => option.id === intel.counterToStrength)?.label || "Balanced";
+      const counterB = GAMEPLAN_OPTIONS.find((option) => option.id === intel.counterToWeakness)?.label || "Balanced";
+      intelHints.push(`Counters: ${counterA} / ${counterB}`);
+    }
+    const intelText = intelHints.length ? intelHints.join(" | ") : "Limited scouting intel. You mostly have broad ranges.";
+    return `
+      <div class="card">
+        <h4>Pregame Setup: ${match.opponentName}</h4>
+        <p class="subtle">Opponent read: Off ${showRange(opponent.profile.offense)}, Def ${showRange(opponent.profile.defense)}, SR ${showRange(opponent.profile.serveReceive)}, Block ${showRange(opponent.profile.block)}.</p>
+        <p class="footnote">${intelText}</p>
+        <label>
+          Gameplan Counter
+          <select class="select" data-action="pregame-gameplan" data-week-id="${week.id}" data-match-id="${match.id}">
+            ${GAMEPLAN_OPTIONS.map((option) => `<option value="${option.id}" ${match.pregame.gameplan === option.id ? "selected" : ""}>${option.label}</option>`).join("")}
+          </select>
+        </label>
+        <p class="subtle" style="margin-top:0.65rem;">Select exactly 6 starters (Varsity match lineup):</p>
+        <div class="grid-two">
+          ${varsity
+            .map(
+              (player) => `
+              <label>
+                <input type="checkbox" data-action="pregame-lineup" data-week-id="${week.id}" data-match-id="${match.id}" data-player-id="${player.id}" ${lineupIds.has(player.id) ? "checked" : ""} />
+                ${player.name} (${player.position}) OVR ${playerOverall(player)} LDR ${player.leadership}
+              </label>
+            `
+            )
+            .join("")}
+        </div>
+        <button style="margin-top:0.7rem;" class="btn btn-primary" data-action="lock-pregame" data-week-id="${week.id}" data-match-id="${match.id}">
+          Lock Gameplan + Lineup
+        </button>
       </div>
     `;
   }
@@ -3275,7 +4036,16 @@ function renderMatchCard(week, match) {
           `<span class="tag ${set.won ? "good" : "bad"}">S${index + 1} ${set.team}-${set.opp}</span>`
       )
       .join("");
-    const timeoutsLeft = Math.max(0, live.timeoutsPerSet - live.currentSet.timeoutsUsed);
+    const lineupPlayers = getVarsityPlayers(state).filter((player) => live.lineupIds.includes(player.id));
+    const orderedRotation = lineupPlayers
+      .map((player, idx) => {
+        const rotationSlot = (idx - live.rotationIndexTeam + lineupPlayers.length) % lineupPlayers.length;
+        return { player, rotationSlot };
+      })
+      .sort((a, b) => a.rotationSlot - b.rotationSlot);
+    const rotationText = orderedRotation
+      .map((entry, idx) => `${idx + 1}:${entry.player.name.split(" ")[0]}`)
+      .join(" | ");
     return `
       <div class="card live-card">
         <h4>${match.opponentName} (${match.home ? "Home" : "Away"})</h4>
@@ -3290,52 +4060,43 @@ function renderMatchCard(week, match) {
             <span>Sets ${live.setsWonOpp}</span>
           </div>
         </div>
-        <p class="subtle">Set ${live.currentSet.setIndex} to ${live.currentSet.target}. Timeouts left this set: ${timeoutsLeft}. Subs left: ${live.remainingSubstitutions}.</p>
+        <p class="subtle">Set ${live.currentSet.setIndex} to ${live.currentSet.target}. Serving: ${live.serving === "team" ? "You" : "Opponent"}.</p>
+        <p class="footnote">Rotation: ${rotationText || "No lineup set"}.</p>
         <div>${setTags || '<span class="tag">No completed sets yet</span>'}</div>
-        <div class="line" style="margin-top:0.65rem; flex-wrap:wrap;">
-          <button class="btn btn-primary" data-action="live-rally" data-week-id="${week.id}" data-match-id="${match.id}">Play Rally</button>
-          <button class="btn btn-secondary" data-action="live-timeout" data-week-id="${week.id}" data-match-id="${match.id}" ${timeoutsLeft > 0 ? "" : "disabled"}>Call Timeout</button>
-          <button class="btn btn-secondary" data-action="live-sub" data-week-id="${week.id}" data-match-id="${match.id}" ${live.remainingSubstitutions > 0 ? "" : "disabled"}>Use Sub</button>
-          <button class="btn btn-accent" data-action="live-autoplay-set" data-week-id="${week.id}" data-match-id="${match.id}">Autoplay Set</button>
-          <button class="btn btn-good" data-action="live-finish" data-week-id="${week.id}" data-match-id="${match.id}">Finish Match</button>
-        </div>
+        ${
+          live.scenario
+            ? `
+              <div class="callout" style="margin-top:0.65rem;">
+                <strong>${live.scenario.title}</strong>
+                <p class="subtle">${live.scenario.body}</p>
+                <div class="line" style="flex-wrap:wrap;">
+                  ${live.scenario.options
+                    .map(
+                      (option) =>
+                        `<button class="btn btn-secondary" data-action="live-scenario-choice" data-week-id="${week.id}" data-match-id="${match.id}" data-option-id="${option.id}">${option.label}</button>`
+                    )
+                    .join("")}
+                </div>
+              </div>
+            `
+            : `
+              <div class="line" style="margin-top:0.65rem; flex-wrap:wrap;">
+                <button class="btn btn-primary" data-action="live-rally" data-week-id="${week.id}" data-match-id="${match.id}">Play Rally</button>
+                <button class="btn btn-accent" data-action="live-autoplay-set" data-week-id="${week.id}" data-match-id="${match.id}">Autoplay Set</button>
+                <button class="btn btn-good" data-action="live-finish" data-week-id="${week.id}" data-match-id="${match.id}">Finish Match</button>
+              </div>
+            `
+        }
       </div>
     `;
   }
 
-  const opponent = findTeamById(state, match.opponentId);
-  const intelLevel = evaluateWeeklyEffects(state, week).intelLevel;
-  const hasLiveMatch = week.matches.some((candidate) => candidate.status === "live");
-  const fuzz = intelLevel > 0 ? 2 : 9;
-  const showRange = (value) => `${clamp(value - fuzz, 30, 99)}-${clamp(value + fuzz, 30, 99)}`;
   return `
     <div class="card">
       <h4>${match.opponentName} (${match.home ? "Home" : "Away"})</h4>
       <p class="subtle">Opponent read: Off ${showRange(opponent.profile.offense)}, Def ${showRange(opponent.profile.defense)}, SR ${showRange(opponent.profile.serveReceive)}, Block ${showRange(opponent.profile.block)}</p>
-      <div class="grid-two">
-        <label>
-          Gameplan
-          <select class="select" data-action="match-gameplan" data-week-id="${week.id}" data-match-id="${match.id}">
-            ${GAMEPLAN_OPTIONS.map((option) => `<option value="${option.id}" ${match.gameplan === option.id ? "selected" : ""}>${option.label}</option>`).join("")}
-          </select>
-        </label>
-        <label>
-          Control Mode
-          <select class="select" data-action="match-control-mode" data-week-id="${week.id}" data-match-id="${match.id}">
-            <option value="autoplay" ${match.control.mode === "autoplay" ? "selected" : ""}>Autoplay</option>
-            <option value="manual" ${match.control.mode === "manual" ? "selected" : ""}>Manual Calls</option>
-          </select>
-        </label>
-        <label>
-          Timeouts / Set (0-2)
-          <input class="input" type="number" min="0" max="2" step="1" value="${match.control.timeoutsPerSet}" data-action="match-timeouts" data-week-id="${week.id}" data-match-id="${match.id}" />
-        </label>
-        <label>
-          Substitutions (0-15)
-          <input class="input" type="number" min="0" max="15" step="1" value="${match.control.substitutions}" data-action="match-subs" data-week-id="${week.id}" data-match-id="${match.id}" />
-        </label>
-      </div>
-      <button style="margin-top:0.7rem;" class="btn btn-primary" data-action="play-match" data-week-id="${week.id}" data-match-id="${match.id}" ${(week.focusLocked && !hasLiveMatch) ? "" : "disabled"}>Play Match</button>
+      <p class="footnote">Intel: ${Math.round(intel?.knowledge || 0)}/100 | Games played vs this team: ${intel?.gamesSeen || 0}</p>
+      <button style="margin-top:0.7rem;" class="btn btn-primary" data-action="play-match" data-week-id="${week.id}" data-match-id="${match.id}" ${(week.focusLocked && !hasLiveMatch) ? "" : "disabled"}>Open Match Prep</button>
     </div>
   `;
 }
@@ -3374,30 +4135,131 @@ function renderTournamentCard(week) {
     <div class="card">
       <h3>${tournament?.name || "Tournament"}</h3>
       <p class="subtle">16-team format: 4 pools of 4, then Gold (8), Silver (4), Bronze (4) brackets. Max season matches remain capped at 30.</p>
-      <div class="grid-two">
-        <label>
-          Gameplan
-          <select class="select" data-action="tournament-gameplan" data-week-id="${week.id}">
-            ${GAMEPLAN_OPTIONS.map((option) => `<option value="${option.id}" ${week.gameplan === option.id ? "selected" : ""}>${option.label}</option>`).join("")}
-          </select>
-        </label>
-        <label>
-          Control Mode
-          <select class="select" data-action="tournament-control-mode" data-week-id="${week.id}">
-            <option value="autoplay" ${week.control.mode === "autoplay" ? "selected" : ""}>Autoplay</option>
-            <option value="manual" ${week.control.mode === "manual" ? "selected" : ""}>Manual Calls</option>
-          </select>
-        </label>
-        <label>
-          Timeouts / Set (0-2)
-          <input class="input" type="number" min="0" max="2" step="1" value="${week.control.timeoutsPerSet}" data-action="tournament-timeouts" data-week-id="${week.id}" />
-        </label>
-        <label>
-          Substitutions (0-15)
-          <input class="input" type="number" min="0" max="15" step="1" value="${week.control.substitutions}" data-action="tournament-subs" data-week-id="${week.id}" />
-        </label>
-      </div>
+      <label>
+        Gameplan
+        <select class="select" data-action="tournament-gameplan" data-week-id="${week.id}">
+          ${GAMEPLAN_OPTIONS.map((option) => `<option value="${option.id}" ${week.gameplan === option.id ? "selected" : ""}>${option.label}</option>`).join("")}
+        </select>
+      </label>
       <button style="margin-top:0.7rem;" class="btn btn-primary" data-action="run-tournament" data-week-id="${week.id}" ${week.focusLocked ? "" : "disabled"}>Run Tournament Week</button>
+    </div>
+  `;
+}
+
+function renderSeasonStandingsTab() {
+  const rows = sortedLeagueStandingsRows(state.season.leagueStandings);
+  return `
+    <div class="card">
+      <h3>League Standings</h3>
+      <p class="subtle">Varsity league race updates after each completed week.</p>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Team</th>
+              <th class="right">W</th>
+              <th class="right">L</th>
+              <th class="right">Pct</th>
+              <th class="right">GB</th>
+              <th class="right">Set +/-</th>
+              <th class="right">Streak</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map((row) => {
+                const streakText = row.streak === 0 ? "-" : row.streak > 0 ? `W${row.streak}` : `L${Math.abs(row.streak)}`;
+                return `
+                  <tr>
+                    <td>${row.rank}</td>
+                    <td>${row.teamName} ${row.teamId === "user_team" ? "<span class='tag good'>You</span>" : ""}</td>
+                    <td class="right">${row.wins}</td>
+                    <td class="right">${row.losses}</td>
+                    <td class="right">${row.pct.toFixed(3)}</td>
+                    <td class="right">${row.rank === 1 ? "-" : row.gb.toFixed(1)}</td>
+                    <td class="right">${row.setsFor - row.setsAgainst}</td>
+                    <td class="right">${streakText}</td>
+                  </tr>
+                `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderSeasonPlayerStatsTab() {
+  const players = [...state.program.rosterPlayers].sort((a, b) => b.seasonStats.impact - a.seasonStats.impact);
+  return `
+    <div class="card">
+      <h3>Player Season Stats</h3>
+      <p class="subtle">Track development and production throughout the year.</p>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Player</th>
+              <th>Team</th>
+              <th>Pos</th>
+              <th>Yr</th>
+              <th class="right">Sets</th>
+              <th class="right">Impact</th>
+              <th class="right">OVR</th>
+              <th class="right">POT</th>
+              <th class="right">XP</th>
+              <th class="right">SV</th>
+              <th class="right">PS</th>
+              <th class="right">ST</th>
+              <th class="right">HT</th>
+              <th class="right">BL</th>
+              <th class="right">AW</th>
+              <th class="right">RS</th>
+              <th class="right">LD</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${players
+              .map((player) => {
+                const teamLabel = state.team.rosters.varsityIds.includes(player.id)
+                  ? "Varsity"
+                  : state.team.rosters.jvIds.includes(player.id)
+                    ? "JV"
+                    : "Program";
+                const captainTag =
+                  player.id === state.team.captains?.varsityId
+                    ? "<span class='tag good'>V C</span>"
+                    : player.id === state.team.captains?.jvId
+                      ? "<span class='tag good'>JV C</span>"
+                      : "";
+                return `
+                  <tr>
+                    <td>${player.name} ${captainTag}</td>
+                    <td>${teamLabel}</td>
+                    <td>${player.position}</td>
+                    <td>${gradeLabel(player.grade)}</td>
+                    <td class="right">${player.seasonStats.setsPlayed}</td>
+                    <td class="right">${player.seasonStats.impact}</td>
+                    <td class="right">${playerOverall(player)}</td>
+                    <td class="right">${player.potential}</td>
+                    <td class="right">${player.xp}</td>
+                    <td class="right">${player.serving}</td>
+                    <td class="right">${player.passing}</td>
+                    <td class="right">${player.setting}</td>
+                    <td class="right">${player.hitting}</td>
+                    <td class="right">${player.blocking}</td>
+                    <td class="right">${player.awareness}</td>
+                    <td class="right">${player.resilience}</td>
+                    <td class="right">${player.leadership}</td>
+                  </tr>
+                `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
     </div>
   `;
 }
@@ -3412,6 +4274,33 @@ function renderSeason() {
   const completedWeeks = state.season.weeks.filter((entry) => entry.status === "completed").length;
   const progressPct = Math.round((completedWeeks / state.season.weeks.length) * 100);
   const liveMatches = week.kind === "league" ? week.matches.filter((match) => match.status === "live").length : 0;
+  const varsityCaptain = state.program.rosterPlayers.find((player) => player.id === state.team.captains?.varsityId);
+  const jvCaptain = state.program.rosterPlayers.find((player) => player.id === state.team.captains?.jvId);
+  const activeTab = state.season.viewTab || "matchday";
+  const tabButtons = [
+    { id: "matchday", label: "Matchday" },
+    { id: "standings", label: "Standings" },
+    { id: "players", label: "Player Stats" }
+  ];
+
+  let tabContent = "";
+  if (activeTab === "standings") {
+    tabContent = renderSeasonStandingsTab();
+  } else if (activeTab === "players") {
+    tabContent = renderSeasonPlayerStatsTab();
+  } else {
+    tabContent = `
+      ${renderWeeklyFocus(week)}
+      ${
+        week.kind === "league"
+          ? week.matches.map((match) => renderMatchCard(week, match)).join("")
+          : renderTournamentCard(week)
+      }
+      <div class="card">
+        <button class="btn btn-primary" data-action="advance-week" ${allWeekMatchesComplete(week) ? "" : "disabled"}>Advance To Next Week</button>
+      </div>
+    `;
+  }
 
   return `
     <div class="stack">
@@ -3423,22 +4312,23 @@ function renderSeason() {
         <div>
           <span class="tag">Tue / Thu match nights</span>
           <span class="tag">JV first, Varsity second</span>
-          <span class="tag">Focus: ${week.focus ? friendlyFocusLabel(week.focus) : "Not Locked"}</span>
+          <span class="tag">Energy: ${week.focusLocked ? `S${week.energy.scouting}/I${week.energy.individual}/T${week.energy.team}` : "Not Locked"}</span>
           <span class="tag">Ranking ${state.season.rankingPoints}</span>
+          <span class="tag">V Captain: ${varsityCaptain ? `${varsityCaptain.name} (${varsityCaptain.leadership})` : "Unset"}</span>
+          <span class="tag">JV Captain: ${jvCaptain ? `${jvCaptain.name} (${jvCaptain.leadership})` : "Unset"}</span>
         </div>
       </div>
-
-      ${renderWeeklyFocus(week)}
-
-      ${
-        week.kind === "league"
-          ? week.matches.map((match) => renderMatchCard(week, match)).join("")
-          : renderTournamentCard(week)
-      }
-
       <div class="card">
-        <button class="btn btn-primary" data-action="advance-week" ${allWeekMatchesComplete(week) ? "" : "disabled"}>Advance To Next Week</button>
+        <div class="line" style="justify-content:flex-start; gap:0.45rem; flex-wrap:wrap;">
+          ${tabButtons
+            .map(
+              (tab) =>
+                `<button class="btn ${activeTab === tab.id ? "btn-accent" : "btn-secondary"}" data-action="season-tab" data-tab="${tab.id}">${tab.label}</button>`
+            )
+            .join("")}
+        </div>
       </div>
+      ${tabContent}
     </div>
   `;
 }

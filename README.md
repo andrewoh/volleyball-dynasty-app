@@ -12,15 +12,22 @@ A browser-based dynasty management prototype focused on season-to-season progres
   - Postseason reveal (sectional field + bracket + state berth logic)
   - Offseason upgrades + player progression + next-season regeneration
 - Match systems:
-  - Weekly coaching focus: scouting, individual training, team training
+  - Weekly energy allocation (must total 100%) across scouting, individual development, and team development
+  - In-season tabs for `Matchday`, `League Standings`, and `Player Stats`
   - Per-match strategic focus (gameplan)
   - Live in-set coaching mode for manual matches:
     - Rally-by-rally progression
-    - Timeout calls (set-limited)
-    - Substitution calls (match-limited)
+    - Pregame lock flow for gameplan + lineup before match starts
+    - Real-time score and rotation tracking
+    - In-game scenario decisions with upside/downside outcomes
     - Set autoplay / full-match autoplay controls
   - JV + Varsity outcomes for league nights
   - Player XP and growth
+- Player model:
+  - Boys-only generated player pool
+  - Expanded physical attributes: height, standing reach, block touch, approach touch
+  - Expanded skills: serving, passing, setting, hitting, blocking, awareness, resilience, leadership
+  - Captains required for JV and Varsity; leadership impacts match performance with on-court tradeoffs
 - Recruiting systems:
   - Offseason recruiting board with star levels and commit thresholds
   - Scout / pitch / offer actions with finite recruiting points
@@ -28,6 +35,10 @@ A browser-based dynasty management prototype focused on season-to-season progres
 - Ranking/resume systems:
   - Resume-based sectional at-large scoring (win pct, SOS, quality wins, bad losses, tournament weight)
   - Sectional reveal table shows resume components for transparency
+- Scouting and intel:
+  - Opponent info starts limited and improves over the season
+  - Playing/scouting teams reveals strengths, weaknesses, and counters over time
+  - Opponent preparation can neutralize counter bonuses if they scout you effectively
 - Tournament system:
   - 16-team structure, 4 pools of 4
   - Gold/Silver/Bronze brackets after pool play
