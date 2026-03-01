@@ -331,102 +331,130 @@ function makeSeededRandom(seed) {
 
 function createPixelAvatarDataUri(seed) {
   const random = makeSeededRandom(seed);
-  const skinTones = ["#F6DCC8", "#EEC9AE", "#DDB291", "#C99873", "#B27D5A"];
-  const hairColors = ["#E28644", "#C66C31", "#A5572B", "#7C4A2C", "#3A302E", "#D8B05C"];
-  const jerseyColors = ["#1B4379", "#D94816", "#A32020", "#1F7A43", "#2D4F91"];
-  const trimColors = ["#FFFFFF", "#F5EEDC", "#FCE69A"];
-  const eyeColors = ["#4A352B", "#2D3A4C", "#5C2F2F"];
+  const skinTones = ["#F7DFC9", "#F0CCAF", "#E1B893", "#CF9E76", "#B9835D"];
+  const hairColors = ["#E7894E", "#D27439", "#B85A2A", "#5A3D31", "#25262D", "#C1AF62", "#8A5A47"];
+  const eyeColors = ["#64483A", "#2E5E8E", "#4F7351", "#5A415E", "#87672A"];
+  const jerseyBase = ["#1A2F53", "#213E6E", "#2A4C82", "#D94816", "#A32020", "#1F7A43"];
+  const trimColors = ["#FFFFFF", "#EDE9DB", "#F8E7A3", "#D8E8FF"];
+  const outline = "#4A332D";
+  const stickerWhite = "#FFFFFF";
+  const stickerBlue = "#D8EAF9";
   const skin = skinTones[Math.floor(random() * skinTones.length)];
   const hair = hairColors[Math.floor(random() * hairColors.length)];
-  const jersey = jerseyColors[Math.floor(random() * jerseyColors.length)];
-  const jerseyTrim = trimColors[Math.floor(random() * trimColors.length)];
   const eye = eyeColors[Math.floor(random() * eyeColors.length)];
-  const outline = "#4A332D";
-  const blush = random() < 0.5 ? "#EBA198" : "#E8A3A0";
-  const bgA = random() < 0.5 ? "#ECECEC" : "#E7EDF4";
-  const bgB = random() < 0.5 ? "#D7EAF8" : "#E2D9F5";
-  const hairStyle = Math.floor(random() * 3);
-  const eyeStyle = Math.floor(random() * 3);
-  const mouthStyle = Math.floor(random() * 3);
+  const jersey = jerseyBase[Math.floor(random() * jerseyBase.length)];
+  const jerseyTrim = trimColors[Math.floor(random() * trimColors.length)];
+  const shorts = random() < 0.6 ? "#1E2C47" : "#283756";
+  const hairStyle = Math.floor(random() * 7);
+  const eyeStyle = Math.floor(random() * 5);
+  const mood = Math.floor(random() * 5);
+  const hasGlasses = random() < 0.15;
   const jerseyNumber = 1 + Math.floor(random() * 20);
+  const blush = random() < 0.65;
 
-  const hairPath =
-    hairStyle === 0
-      ? `M18 54 L20 33 L29 25 L35 14 L47 10 L57 13 L66 8 L76 16 L82 28 L85 38 L84 54 Z`
-      : hairStyle === 1
-      ? `M17 55 L19 32 L28 20 L39 14 L49 8 L60 12 L68 19 L77 24 L84 35 L85 55 Z`
-      : `M18 55 L20 35 L28 28 L34 18 L45 12 L56 10 L67 16 L74 24 L83 31 L86 44 L84 55 Z`;
+  const hairTemplates = [
+    "M20 61 L19 40 L27 28 L33 17 L43 14 L53 8 L65 11 L75 8 L86 15 L94 25 L101 37 L103 53 L101 61 Z",
+    "M21 61 L20 35 L30 23 L42 16 L54 12 L66 13 L77 17 L88 26 L98 37 L101 61 Z",
+    "M20 61 L19 43 L27 31 L34 20 L45 13 L56 13 L67 9 L78 14 L89 22 L98 33 L103 47 L102 61 Z",
+    "M22 61 L21 39 L30 24 L40 18 L52 16 L64 18 L74 15 L84 20 L94 30 L100 44 L102 61 Z",
+    "M20 61 L21 36 L29 26 L36 20 L48 14 L61 15 L71 18 L82 25 L93 36 L100 49 L102 61 Z",
+    "M22 61 L21 34 L31 22 L42 13 L54 10 L66 11 L79 18 L89 28 L98 38 L102 61 Z",
+    "M20 61 L20 41 L27 29 L35 22 L44 17 L55 13 L66 14 L76 18 L85 25 L94 35 L100 46 L102 61 Z"
+  ];
+  const hairPath = hairTemplates[hairStyle % hairTemplates.length];
+
+  const browMarkup =
+    mood === 1
+      ? `<path d="M38 46 L48 43" fill="none"/><path d="M60 43 L70 46" fill="none"/>`
+      : mood === 2
+      ? `<path d="M38 44 L49 45" fill="none"/><path d="M59 45 L70 44" fill="none"/>`
+      : `<path d="M38 45 L49 43.8" fill="none"/><path d="M59 43.8 L70 45" fill="none"/>`;
 
   const eyeMarkup =
     eyeStyle === 0
       ? `
-        <ellipse cx="39" cy="48.5" rx="5.3" ry="5.1" fill="#fff"/>
-        <ellipse cx="59" cy="48.5" rx="5.3" ry="5.1" fill="#fff"/>
-        <ellipse cx="39" cy="49" rx="2.85" ry="3.2" fill="${eye}"/>
-        <ellipse cx="59" cy="49" rx="2.85" ry="3.2" fill="${eye}"/>
+      <ellipse cx="43" cy="53" rx="6.2" ry="5.8" fill="#fff"/>
+      <ellipse cx="65" cy="53" rx="6.2" ry="5.8" fill="#fff"/>
+      <ellipse cx="43" cy="53.8" rx="3.4" ry="3.8" fill="${eye}"/>
+      <ellipse cx="65" cy="53.8" rx="3.4" ry="3.8" fill="${eye}"/>
       `
       : eyeStyle === 1
       ? `
-        <ellipse cx="39" cy="48.8" rx="5.5" ry="4.6" fill="#fff"/>
-        <ellipse cx="59" cy="48.8" rx="5.5" ry="4.6" fill="#fff"/>
-        <circle cx="39" cy="49.2" r="2.8" fill="${eye}"/>
-        <circle cx="59" cy="49.2" r="2.8" fill="${eye}"/>
+      <ellipse cx="43" cy="53.2" rx="6.3" ry="5.2" fill="#fff"/>
+      <ellipse cx="65" cy="53.2" rx="6.3" ry="5.2" fill="#fff"/>
+      <circle cx="43" cy="54" r="3.45" fill="${eye}"/>
+      <circle cx="65" cy="54" r="3.45" fill="${eye}"/>
+      `
+      : eyeStyle === 2
+      ? `
+      <path d="M36.5 53 Q43 47.5 49.5 53 Q43 58.5 36.5 53 Z" fill="#fff"/>
+      <path d="M58.5 53 Q65 47.5 71.5 53 Q65 58.5 58.5 53 Z" fill="#fff"/>
+      <ellipse cx="43" cy="53.5" rx="3.1" ry="3.1" fill="${eye}"/>
+      <ellipse cx="65" cy="53.5" rx="3.1" ry="3.1" fill="${eye}"/>
+      `
+      : eyeStyle === 3
+      ? `
+      <ellipse cx="43" cy="54" rx="6.1" ry="4.5" fill="#fff"/>
+      <ellipse cx="65" cy="54" rx="6.1" ry="4.5" fill="#fff"/>
+      <ellipse cx="43" cy="54.5" rx="3.4" ry="2.8" fill="${eye}"/>
+      <ellipse cx="65" cy="54.5" rx="3.4" ry="2.8" fill="${eye}"/>
       `
       : `
-        <path d="M33.5 48 Q39 43.8 44.5 48 Q39 53 33.5 48 Z" fill="#fff"/>
-        <path d="M53.5 48 Q59 43.8 64.5 48 Q59 53 53.5 48 Z" fill="#fff"/>
-        <ellipse cx="39" cy="48.8" rx="2.9" ry="2.7" fill="${eye}"/>
-        <ellipse cx="59" cy="48.8" rx="2.9" ry="2.7" fill="${eye}"/>
+      <path d="M37 53 L49 53" fill="none"/><path d="M59 53 L71 53" fill="none"/>
+      <ellipse cx="43" cy="53" rx="2.9" ry="2.5" fill="${eye}"/>
+      <ellipse cx="65" cy="53" rx="2.9" ry="2.5" fill="${eye}"/>
       `;
 
   const mouthMarkup =
-    mouthStyle === 0
-      ? `<path d="M43 60 Q49 65 55 60" fill="none" stroke="${outline}" stroke-width="2.4" stroke-linecap="round"/>`
-      : mouthStyle === 1
-      ? `<ellipse cx="49" cy="60.5" rx="6" ry="3.8" fill="#8F4A46"/><ellipse cx="49" cy="59.2" rx="4.1" ry="1.7" fill="#F6B2AF"/>`
-      : `<path d="M45 60.5 Q49 63.2 53 60.5" fill="none" stroke="${outline}" stroke-width="2.2" stroke-linecap="round"/>`;
+    mood === 0
+      ? `<path d="M46 66 Q54 72 62 66" fill="none" stroke-width="2.6"/>`
+      : mood === 1
+      ? `<ellipse cx="54" cy="67" rx="7.2" ry="4.6" fill="#8D4A44"/><ellipse cx="54" cy="65.5" rx="5.2" ry="2.2" fill="#F4B6AF" stroke="none"/>`
+      : mood === 2
+      ? `<path d="M48 66 Q54 63.5 60 66" fill="none" stroke-width="2.4"/>`
+      : mood === 3
+      ? `<path d="M49 67 L59 67" fill="none" stroke-width="2.3"/>`
+      : `<path d="M47 66 Q54 70 61 66" fill="none" stroke-width="2.4"/>`;
+
+  const silhouette =
+    "M24 119 L26 87 Q27 78 33 73 Q30 67 30 58 Q30 39 42 27 Q48 11 64 10 Q80 11 86 27 Q98 39 98 58 Q98 67 95 73 Q101 78 102 87 L104 119 Q97 121 91 117 Q83 122 64 122 Q45 122 37 117 Q31 121 24 119 Z";
 
   const jerseyPattern =
     random() < 0.5
-      ? `<path d="M37 77 H61 L59 98 H39 Z" fill="${jersey}"/><path d="M49 77 V98" stroke="${jerseyTrim}" stroke-width="2.2"/>`
-      : `<path d="M36 77 H62 L60 98 H38 Z" fill="${jersey}"/><path d="M36 84 H62" stroke="${jerseyTrim}" stroke-width="2.2"/>`;
+      ? `<path d="M42 84 H66 L64 107 H44 Z" fill="${jersey}"/><path d="M54 84 V107" stroke="${jerseyTrim}" stroke-width="2.3"/>`
+      : `<path d="M41 84 H67 L65 107 H43 Z" fill="${jersey}"/><path d="M41 92 H67" stroke="${jerseyTrim}" stroke-width="2.3"/>`;
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="102" height="102" viewBox="0 0 102 102">
-    <defs>
-      <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="${bgA}"/>
-        <stop offset="100%" stop-color="${bgB}"/>
-      </linearGradient>
-    </defs>
-    <rect width="102" height="102" rx="18" fill="url(#bgGrad)"/>
-    <ellipse cx="51" cy="95.5" rx="21" ry="4" fill="rgba(25,20,20,0.2)"/>
-    <g stroke="${outline}" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round">
-      <circle cx="51" cy="45" r="31" fill="#DCEAF9"/>
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+    <g fill="none" stroke-linejoin="round" stroke-linecap="round">
+      <path d="${silhouette}" stroke="${stickerWhite}" stroke-width="13"/>
+      <path d="${silhouette}" stroke="${stickerBlue}" stroke-width="7"/>
+    </g>
+    <g stroke="${outline}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
       <path d="${hairPath}" fill="${hair}"/>
-      <circle cx="51" cy="49" r="24.8" fill="${skin}"/>
-      <ellipse cx="28.4" cy="50.4" rx="3.2" ry="4.6" fill="${skin}"/>
-      <ellipse cx="73.6" cy="50.4" rx="3.2" ry="4.6" fill="${skin}"/>
-      <ellipse cx="34.5" cy="57.4" rx="2.8" ry="1.4" fill="${blush}" stroke="none"/>
-      <ellipse cx="67.5" cy="57.4" rx="2.8" ry="1.4" fill="${blush}" stroke="none"/>
-      <path d="M34.5 41.2 Q39.2 37.3 43.8 40.8" fill="none"/>
-      <path d="M54.2 40.8 Q58.8 37.3 63.5 41.2" fill="none"/>
+      <circle cx="54" cy="52" r="29" fill="${skin}"/>
+      <ellipse cx="27.5" cy="54.5" rx="3.2" ry="4.9" fill="${skin}"/>
+      <ellipse cx="80.5" cy="54.5" rx="3.2" ry="4.9" fill="${skin}"/>
+      ${blush ? `<ellipse cx="34.5" cy="61.5" rx="3.5" ry="1.8" fill="#E8A39E" stroke="none"/><ellipse cx="73.5" cy="61.5" rx="3.5" ry="1.8" fill="#E8A39E" stroke="none"/>` : ""}
+      ${browMarkup}
       ${eyeMarkup}
-      <circle cx="40.2" cy="47.8" r="0.95" fill="#fff" stroke="none"/>
-      <circle cx="60.2" cy="47.8" r="0.95" fill="#fff" stroke="none"/>
-      <ellipse cx="51" cy="55.1" rx="1.35" ry="0.95" fill="#DEAE8D" stroke="none"/>
+      <circle cx="44.4" cy="51.2" r="1.1" fill="#fff" stroke="none"/>
+      <circle cx="66.4" cy="51.2" r="1.1" fill="#fff" stroke="none"/>
+      <ellipse cx="54" cy="59.2" rx="1.35" ry="1.0" fill="#DEAE8D" stroke="none"/>
       ${mouthMarkup}
-      <path d="M35 73 Q51 81 67 73 L70 98 Q51 102 32 98 Z" fill="${jersey}" />
+      ${hasGlasses ? `<rect x="35.8" y="47.4" width="14.4" height="11.4" rx="2.2" fill="none"/><rect x="57.8" y="47.4" width="14.4" height="11.4" rx="2.2" fill="none"/><line x1="50.4" y1="52.8" x2="57.8" y2="52.8"/>` : ""}
+      <path d="M39 79 Q54 87 69 79 L72 109 Q54 114 36 109 Z" fill="${jersey}"/>
       ${jerseyPattern}
-      <text x="51" y="91" text-anchor="middle" font-family="Arial, sans-serif" font-size="9.2" font-weight="700" fill="${jerseyTrim}" stroke="none">${jerseyNumber}</text>
-      <path d="M33 78 L25 86 L29 89 L37 81 Z" fill="${jersey}"/>
-      <path d="M69 78 L77 86 L73 89 L65 81 Z" fill="${jersey}"/>
-      <ellipse cx="27.2" cy="88.2" rx="2.9" ry="2.3" fill="${skin}" />
-      <ellipse cx="74.8" cy="88.2" rx="2.9" ry="2.3" fill="${skin}" />
-      <path d="M40 98 H62 L59 104 H43 Z" fill="#273754" />
-      <line x1="45.3" y1="104" x2="45.3" y2="100"/>
-      <line x1="56.7" y1="104" x2="56.7" y2="100"/>
-      <ellipse cx="45.3" cy="104" rx="4.3" ry="1.2" fill="#272331" stroke="none"/>
-      <ellipse cx="56.7" cy="104" rx="4.3" ry="1.2" fill="#272331" stroke="none"/>
+      <text x="54" y="100.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="10.2" font-weight="700" fill="${jerseyTrim}" stroke="none">${jerseyNumber}</text>
+      <path d="M37 86 L28 95 L32 99 L41 90 Z" fill="${jersey}"/>
+      <path d="M71 86 L80 95 L76 99 L67 90 Z" fill="${jersey}"/>
+      <ellipse cx="30.2" cy="98.2" rx="3.3" ry="2.6" fill="${skin}"/>
+      <ellipse cx="77.8" cy="98.2" rx="3.3" ry="2.6" fill="${skin}"/>
+      <path d="M45 108 H63 L61 122 H47 Z" fill="${shorts}"/>
+      <path d="M45 122 L38 122 L39 111 L45 111 Z" fill="${skin}"/>
+      <path d="M63 122 L70 122 L69 111 L63 111 Z" fill="${skin}"/>
+      <path d="M39 121 H45" fill="none"/><path d="M63 121 H69" fill="none"/>
+      <ellipse cx="41.6" cy="123.2" rx="4.3" ry="1.25" fill="#282632" stroke="none"/>
+      <ellipse cx="66.4" cy="123.2" rx="4.3" ry="1.25" fill="#282632" stroke="none"/>
     </g>
   </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
