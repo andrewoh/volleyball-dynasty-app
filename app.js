@@ -692,7 +692,11 @@ function physicalPotentialContribution(player) {
 
 function estimatePotential(player, upgradeLevel) {
   const noiseRange = Math.max(12 - upgradeLevel * 2, 2);
-  return clamp(player.potential + randomInt(-noiseRange, noiseRange), 40, 99);
+  const base = clamp(player?.potential ?? 50, 40, 99);
+  const seed = `${player?.id || player?.name || "player"}:potential:${upgradeLevel}`;
+  const random = makeSeededRandom(seed);
+  const offset = Math.floor(random() * (noiseRange * 2 + 1)) - noiseRange;
+  return clamp(base + offset, 40, 99);
 }
 
 function unlocksTournament(career, tournament) {
