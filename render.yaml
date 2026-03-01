@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: volleyball-dynasty-app
+    env: static
+    buildCommand: ""
+    staticPublishPath: .
