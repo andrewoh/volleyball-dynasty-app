@@ -668,6 +668,20 @@ function growthSkillOrderForPosition(position) {
   return [...shuffle(primary), ...shuffle(primary), ...shuffle(secondary)];
 }
 
+function gradeSkillCurve(grade) {
+  if (grade <= 9) return -4;
+  if (grade === 10) return -1;
+  if (grade === 11) return 3;
+  return 6;
+}
+
+function gradePhysicalCurve(grade) {
+  if (grade <= 9) return -1;
+  if (grade === 10) return 0;
+  if (grade === 11) return 1;
+  return 2;
+}
+
 function physicalPotentialContribution(player) {
   const heightScore = (player.heightInches - 68) * 1.5;
   const reachScore = (player.standingReach - 92) * 0.7;
@@ -693,13 +707,17 @@ function unlocksTournament(career, tournament) {
 }
 
 function createPlayer(draft, opts = {}) {
-  const baseSkill = clamp(opts.baseSkill ?? randomInt(46, 67), 35, 95);
+  const grade = clamp(opts.grade ?? randomInt(9, 12), 9, 12);
+  const gradeSkillBoost = gradeSkillCurve(grade) + randomInt(-3, 3);
+  const seededBaseSkill = opts.baseSkill ?? randomInt(46, 67);
+  const baseSkill = clamp(seededBaseSkill + gradeSkillBoost, 35, 95);
   const position = opts.position ?? randomChoice(POSITIONS);
   const archetype = positionSkillArchetype(position);
   const physical = positionPhysicalArchetype(position);
   const heightBase = positionHeightBaseline(position);
+  const gradePhysicalBoost = gradePhysicalCurve(grade);
   const heightInches = clamp(
-    opts.heightInches ?? heightBase + randomInt(physical.heightRange[0], physical.heightRange[1]),
+    opts.heightInches ?? heightBase + gradePhysicalBoost + randomInt(physical.heightRange[0], physical.heightRange[1]),
     64,
     82
   );
@@ -732,7 +750,7 @@ function createPlayer(draft, opts = {}) {
     name: opts.name ?? createRandomName(),
     gender: "M",
     avatarSeed: opts.avatarSeed ?? `${draft.career?.seasonNumber || 1}-${randomInt(100000, 999999999)}`,
-    grade: opts.grade ?? randomInt(9, 12),
+    grade,
     position,
     heightInches,
     standingReach,
@@ -1430,7 +1448,7 @@ function generateTryoutPool(draft, summary = null) {
   const returning = [];
   const noShows = [];
   const transferCount = clamp(Math.floor((summary?.transferInterest ?? 0) + randomInt(0, 2)), 0, 5);
-  const incomingFreshmen = randomInt(8, 13);
+  const incomingApplicantsCount = randomInt(10, 15);
   const returningFreeAgents = [];
   const returningRosterPool = [];
   const priorVarsityIds = new Set(draft.team.rosters?.varsityIds || []);
@@ -1443,7 +1461,7 @@ function generateTryoutPool(draft, summary = null) {
   }));
 
   for (const player of draft.program.rosterPlayers) {
-    if (player.grade >= 12) {
+    if (player.grade > 12) {
       continue;
     }
     const skipChance = clamp(0.08 + (58 - player.morale) / 100 + randomInt(0, 8) / 100, 0.05, 0.32);
@@ -1456,7 +1474,7 @@ function generateTryoutPool(draft, summary = null) {
       (priorVarsityIds.has(player.id) ? "Varsity" : priorJvIds.has(player.id) ? "JV" : "JV");
     returning.push({
       ...player,
-      grade: Math.max(player.grade, 10),
+      grade: clamp(player.grade, 9, 12),
       lastTeam,
       lastTeamWasTransfer: false,
       origin: "returning"
@@ -1465,7 +1483,7 @@ function generateTryoutPool(draft, summary = null) {
   }
 
   for (const freeAgent of draft.program.freeAgents) {
-    if (freeAgent.grade >= 12) continue;
+    if (freeAgent.grade > 12) continue;
     const returnChance = 0.35 + (draft.career.upgrades.culture * 0.04);
     if (Math.random() < returnChance) {
       const improved = {
@@ -1484,7 +1502,7 @@ function generateTryoutPool(draft, summary = null) {
   const transferBase = 58 + draft.career.divisionIndex * 6 + (summary?.regularSeasonWins ?? 0) * 0.4;
   const transfers = Array.from({ length: transferCount }).map(() =>
     createPlayer(draft, {
-      grade: randomInt(10, 12),
+      grade: randomChoice([10, 10, 11, 11, 12, 12, 9]),
       baseSkill: clamp(Math.round(transferBase + randomInt(-8, 9)), 42, 90),
       potential: clamp(transferBase + randomInt(6, 20), 55, 98),
       origin: "transfer",
@@ -1493,18 +1511,22 @@ function generateTryoutPool(draft, summary = null) {
     })
   );
 
-  const freshmen = Array.from({ length: incomingFreshmen }).map(() =>
+  const incomingGradeSeeds = [9, 10, 11, 12];
+  while (incomingGradeSeeds.length < incomingApplicantsCount) {
+    incomingGradeSeeds.push(randomChoice([9, 9, 10, 10, 10, 11, 11, 12]));
+  }
+  const incomingApplicants = incomingGradeSeeds.map((grade) =>
     createPlayer(draft, {
-      grade: 9,
-      baseSkill: randomInt(42, 62),
-      potential: randomInt(58, 96),
-      origin: "freshman",
+      grade,
+      baseSkill: randomInt(42, 64),
+      potential: randomInt(56, 97),
+      origin: "walk-on",
       lastTeam: null,
       lastTeamWasTransfer: false
     })
   );
 
-  const pool = [...returning, ...incomingCommits, ...returningFreeAgents, ...transfers, ...freshmen].map(
+  const pool = [...returning, ...incomingCommits, ...returningFreeAgents, ...transfers, ...incomingApplicants].map(
     (candidate) => ({
       ...candidate,
       seasonStats: {
@@ -1543,13 +1565,17 @@ function generateTryoutPool(draft, summary = null) {
       varsityId: null,
       jvId: null
     },
+    pendingAdvancePositionId: null,
     positionLocks: makeTryoutPositionLocks(false),
     activePositionId: TRYOUT_POSITION_RULES[0].id,
     summary: {
       returning: returning.length,
       noShows: noShows.length,
       transfers: transfers.length,
-      freshmen: freshmen.length,
+      freshmen: incomingApplicants.filter((player) => player.grade === 9).length,
+      sophomores: incomingApplicants.filter((player) => player.grade === 10).length,
+      juniors: incomingApplicants.filter((player) => player.grade === 11).length,
+      seniors: incomingApplicants.filter((player) => player.grade === 12).length,
       walkOns: returningFreeAgents.length + forcedPositionAdds + extraWalkOns,
       recruits: incomingCommits.length
     },
@@ -1586,6 +1612,7 @@ function applyTryoutAutofill(draft, mode) {
   draft.tryouts.assignments = assignments;
   draft.tryouts.positionLocks = makeTryoutPositionLocks(true);
   draft.tryouts.activePositionId = TRYOUT_POSITION_RULES[TRYOUT_POSITION_RULES.length - 1].id;
+  draft.tryouts.pendingAdvancePositionId = null;
 
   const rankedVarsity = draft.tryouts.candidates
     .filter((player) => assignments[player.id] === "varsity")
@@ -3572,6 +3599,7 @@ function normalizeLoadedState(loaded) {
       varsityId: null,
       jvId: null
     };
+    normalized.tryouts.pendingAdvancePositionId = normalized.tryouts.pendingAdvancePositionId || null;
     if (
       normalized.tryouts.captainSelections.varsityId &&
       normalized.tryouts.assignments?.[normalized.tryouts.captainSelections.varsityId] !== "varsity"
@@ -3883,6 +3911,9 @@ function handleClick(event) {
         if (!draft.tryouts) return;
         if (!findTryoutPositionRule(positionId)) return;
         draft.tryouts.activePositionId = positionId;
+        if (draft.tryouts.pendingAdvancePositionId && draft.tryouts.pendingAdvancePositionId !== positionId) {
+          draft.tryouts.pendingAdvancePositionId = null;
+        }
       },
       "tryout-position"
     );
@@ -3898,6 +3929,7 @@ function handleClick(event) {
         const currentlyLocked = Boolean(draft.tryouts.positionLocks?.[activePosition]);
         if (currentlyLocked) {
           draft.tryouts.positionLocks[activePosition] = false;
+          draft.tryouts.pendingAdvancePositionId = null;
           draft.notices = [{ id: Date.now(), tone: "neutral", message: `${positionLabel(activePosition)} unlocked for edits.` }];
           return;
         }
@@ -3906,7 +3938,43 @@ function handleClick(event) {
           draft.notices = [{ id: Date.now(), tone: "bad", message: validation.message }];
           return;
         }
+        draft.tryouts.pendingAdvancePositionId = activePosition;
+        draft.notices = [{ id: Date.now(), tone: "neutral", message: `Review ${positionLabel(activePosition)} and confirm to advance.` }];
+      },
+      "tryout-lock-position"
+    );
+    return;
+  }
+
+  if (action === "tryout-cancel-advance") {
+    mutate(
+      (draft) => {
+        if (!draft.tryouts) return;
+        draft.tryouts.pendingAdvancePositionId = null;
+      },
+      "tryout-cancel-advance"
+    );
+    return;
+  }
+
+  if (action === "tryout-confirm-advance") {
+    mutate(
+      (draft) => {
+        if (!draft.tryouts) return;
+        draft.tryouts.positionLocks = draft.tryouts.positionLocks || makeTryoutPositionLocks(false);
+        const activePosition = draft.tryouts.activePositionId || firstTryoutPositionId(draft.tryouts);
+        if (draft.tryouts.pendingAdvancePositionId !== activePosition) {
+          draft.notices = [{ id: Date.now(), tone: "bad", message: "Click lock first, then confirm to advance." }];
+          return;
+        }
+        const validation = validateTryoutPositionLocked(draft.tryouts, activePosition);
+        if (!validation.ok) {
+          draft.notices = [{ id: Date.now(), tone: "bad", message: validation.message }];
+          draft.tryouts.pendingAdvancePositionId = null;
+          return;
+        }
         draft.tryouts.positionLocks[activePosition] = true;
+        draft.tryouts.pendingAdvancePositionId = null;
         const next = TRYOUT_POSITION_RULES.find((rule) => !draft.tryouts.positionLocks[rule.id]);
         if (next) draft.tryouts.activePositionId = next.id;
         draft.notices = [
@@ -3914,12 +3982,12 @@ function handleClick(event) {
             id: Date.now(),
             tone: "good",
             message: next
-              ? `${positionLabel(activePosition)} locked. Next up: ${next.label}.`
+              ? `${positionLabel(activePosition)} confirmed. Next up: ${next.label}.`
               : "All position groups locked. Select captains and finalize tryouts."
           }
         ];
       },
-      "tryout-lock-position"
+      "tryout-confirm-advance"
     );
     return;
   }
@@ -3960,33 +4028,7 @@ function handleClick(event) {
         if (draft.tryouts.captainSelections?.jvId === playerId && value !== "jv") {
           draft.tryouts.captainSelections.jvId = null;
         }
-        const updatedCounts = getTryoutPositionCounts(draft.tryouts, activePosition);
-        const readyToLock =
-          updatedCounts.varsity === (rule?.varsity || 0) &&
-          updatedCounts.jv === (rule?.jv || 0) &&
-          updatedCounts.cut >= (rule?.cuts || 0);
-        if (readyToLock) {
-          draft.tryouts.positionLocks[activePosition] = true;
-          const next = TRYOUT_POSITION_RULES.find((candidate) => !draft.tryouts.positionLocks[candidate.id]);
-          if (next) {
-            draft.tryouts.activePositionId = next.id;
-            draft.notices = [
-              {
-                id: Date.now(),
-                tone: "good",
-                message: `${positionLabel(activePosition)} complete and locked. Auto-advanced to ${next.label}.`
-              }
-            ];
-          } else {
-            draft.notices = [
-              {
-                id: Date.now(),
-                tone: "good",
-                message: "All position groups complete. Select captains and finalize tryouts."
-              }
-            ];
-          }
-        }
+        draft.tryouts.pendingAdvancePositionId = null;
       },
       `set-assignment-${value}`
     );
@@ -4839,6 +4881,11 @@ function renderTryouts() {
   const activeLocked = Boolean(locks[activePositionId]);
   const allLocked = allTryoutPositionsLocked(tryouts);
   const activeCounts = getTryoutPositionCounts(tryouts, activePositionId);
+  const pendingConfirmAdvance = tryouts.pendingAdvancePositionId === activePositionId;
+  const readyForAdvance =
+    activeCounts.varsity === activeRule.varsity &&
+    activeCounts.jv === activeRule.jv &&
+    activeCounts.cut >= activeRule.cuts;
   const prioritizedSkills = tryoutSkillPriorityForPosition(activePositionId);
   const primaryFocusSkills = prioritizedSkills.slice(0, 4);
   const orderedSkillKeys = [...prioritizedSkills, ...SKILLS.filter((skill) => !prioritizedSkills.includes(skill))];
@@ -4864,13 +4911,20 @@ function renderTryouts() {
     <div class="stack">
       <div class="card">
         <h2>Tryouts</h2>
-        <p class="subtle">Assign one position group at a time. Each group auto-locks and advances when quotas are met. Every position has 3 mandatory cuts.</p>
+        <p class="subtle">Assign one position group at a time, then confirm to advance to the next position. Every position has 3 mandatory cuts.</p>
         <div class="grid-three" style="margin-top:0.7rem;">
           <div class="kpi"><strong>${tryouts.summary.returning}</strong><span>Returning Tryouts</span></div>
           <div class="kpi"><strong>${tryouts.summary.transfers}</strong><span>Transfers</span></div>
           <div class="kpi"><strong>${tryouts.summary.noShows}</strong><span>No-Shows</span></div>
           <div class="kpi"><strong>${tryouts.summary.recruits || 0}</strong><span>Signed Recruits</span></div>
         </div>
+        <p class="footnote" style="margin-top:0.45rem;">
+          New Walk-ons by Grade:
+          Fr ${tryouts.summary.freshmen || 0},
+          So ${tryouts.summary.sophomores || 0},
+          Jr ${tryouts.summary.juniors || 0},
+          Sr ${tryouts.summary.seniors || 0}
+        </p>
         <div class="line" style="margin-top:0.8rem; flex-wrap:wrap; align-items:flex-start;">
           <div>
             <span class="tag">Varsity ${counts.varsity}/12</span>
@@ -4902,10 +4956,24 @@ function renderTryouts() {
           <span class="tag">Varsity ${activeCounts.varsity}/${activeRule.varsity}</span>
           <span class="tag">JV ${activeCounts.jv}/${activeRule.jv}</span>
           <span class="tag">Cuts ${activeCounts.cut}/${activeRule.cuts}</span>
-          <button class="btn ${activeLocked ? "btn-secondary" : "btn-primary"}" data-action="tryout-lock-position">
-            ${activeLocked ? `Unlock ${activeRule.label}` : `Lock ${activeRule.label}`}
+          <button class="btn ${activeLocked ? "btn-secondary" : "btn-primary"}" data-action="tryout-lock-position" ${activeLocked ? "" : readyForAdvance ? "" : "disabled"}>
+            ${activeLocked ? `Unlock ${activeRule.label}` : `Review ${activeRule.label}`}
           </button>
         </div>
+        ${
+          pendingConfirmAdvance
+            ? `
+              <div class="callout" style="margin-top:0.6rem;">
+                <strong>Confirm ${activeRule.label} selections?</strong>
+                <p class="subtle">This will lock the current position and move you to the next one.</p>
+                <div class="line" style="justify-content:flex-start; gap:0.45rem; flex-wrap:wrap;">
+                  <button class="btn btn-primary" data-action="tryout-confirm-advance">Confirm and Next</button>
+                  <button class="btn btn-secondary" data-action="tryout-cancel-advance">Keep Editing</button>
+                </div>
+              </div>
+            `
+            : ""
+        }
         <p class="footnote" style="margin-top:0.55rem;">${focusDescriptions[activePositionId] || "Prioritize role fit for this position group."}</p>
         <div class="tryout-skill-legend" style="margin-top:0.3rem;">
           ${SKILLS.map((skill) => `<span class="tag">${skillShortLabel(skill)} = ${skillLongLabel(skill)}</span>`).join("")}
