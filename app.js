@@ -207,6 +207,7 @@ const MASCOTS = [
 ];
 const POSITIONS = ["OH", "MB", "S", "RS", "LIB"];
 const SKILLS = ["serving", "passing", "setting", "hitting", "blocking", "awareness", "resilience", "leadership"];
+const LINEUP_SLOT_ORDER = [3, 4, 5, 0, 1, 2];
 const TOURNAMENTS = [
   {
     id: "harvest_classic",
@@ -257,7 +258,8 @@ const runtime = {
   saveStatus: "Loading...",
   lastSavedAt: null,
   pendingIdbWrite: Promise.resolve(),
-  renderScheduled: false
+  renderScheduled: false,
+  avatarCache: new Map()
 };
 
 let state = null;
@@ -288,6 +290,104 @@ function slug(text) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+}
+
+function hashSeed(seed) {
+  const text = String(seed ?? "seed");
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function makeSeededRandom(seed) {
+  let value = hashSeed(seed) || 1;
+  return () => {
+    value ^= value << 13;
+    value ^= value >>> 17;
+    value ^= value << 5;
+    return (value >>> 0) / 4294967295;
+  };
+}
+
+function createPixelAvatarDataUri(seed) {
+  const random = makeSeededRandom(seed);
+  const skinTones = ["#F2D4BE", "#E7BEA0", "#D9A884", "#C68F66", "#AD754E"];
+  const hairColors = ["#2A1D18", "#4E3323", "#3D2A1F", "#5F4A2F", "#1E1E1F"];
+  const jerseyColors = ["#D94816", "#0E5A8A", "#1F7A43", "#A32020", "#5942A6", "#1D3259"];
+  const eyeColors = ["#222222", "#1B2633", "#2A1D18"];
+  const skin = skinTones[Math.floor(random() * skinTones.length)];
+  const hair = hairColors[Math.floor(random() * hairColors.length)];
+  const jersey = jerseyColors[Math.floor(random() * jerseyColors.length)];
+  const jerseyTrim = random() < 0.5 ? "#F2E5C9" : "#FFFFFF";
+  const eye = eyeColors[Math.floor(random() * eyeColors.length)];
+  const bg = random() < 0.5 ? "#F3E7CF" : "#E3D7BF";
+  const hairPattern = Math.floor(random() * 3);
+  const jerseyPattern = Math.floor(random() * 3);
+  const matrix = [
+    [0, 0, 1, 1, 1, 1, 0, 0],
+    [0, 1, 1, 1, 1, 1, 1, 0],
+    [0, 1, 2, 2, 2, 2, 1, 0],
+    [1, 2, 2, 3, 3, 2, 2, 1],
+    [1, 2, 2, 2, 2, 2, 2, 1],
+    [0, 0, 2, 2, 2, 2, 0, 0],
+    [0, 4, 4, 4, 4, 4, 4, 0],
+    [4, 4, 5, 4, 4, 5, 4, 4]
+  ];
+
+  if (hairPattern === 1) {
+    matrix[0] = [0, 1, 1, 1, 1, 1, 1, 0];
+    matrix[1][0] = 1;
+    matrix[1][7] = 1;
+  } else if (hairPattern === 2) {
+    matrix[0] = [0, 0, 1, 1, 1, 1, 0, 0];
+    matrix[1][1] = 0;
+    matrix[1][6] = 0;
+    matrix[2][1] = 1;
+    matrix[2][6] = 1;
+  }
+
+  if (jerseyPattern === 1) {
+    matrix[7] = [4, 5, 4, 4, 4, 4, 5, 4];
+  } else if (jerseyPattern === 2) {
+    matrix[7] = [5, 4, 4, 5, 5, 4, 4, 5];
+  }
+
+  const colorFor = (code) => {
+    if (code === 1) return hair;
+    if (code === 2) return skin;
+    if (code === 3) return eye;
+    if (code === 4) return jersey;
+    if (code === 5) return jerseyTrim;
+    return null;
+  };
+
+  let pixels = "";
+  for (let y = 0; y < matrix.length; y += 1) {
+    for (let x = 0; x < matrix[y].length; x += 1) {
+      const color = colorFor(matrix[y][x]);
+      if (!color) continue;
+      pixels += `<rect x="${x}" y="${y}" width="1" height="1" fill="${color}"/>`;
+    }
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8" shape-rendering="crispEdges"><rect width="8" height="8" fill="${bg}"/>${pixels}</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+function avatarDataUriForPlayer(player) {
+  if (!player) return "";
+  const seed = player.avatarSeed ?? player.id ?? player.name ?? "player";
+  if (!runtime.avatarCache.has(seed)) {
+    runtime.avatarCache.set(seed, createPixelAvatarDataUri(seed));
+  }
+  return runtime.avatarCache.get(seed);
+}
+
+function renderPlayerIdentity(player, compact = false) {
+  const cls = compact ? "player-id compact" : "player-id";
+  return `<span class="${cls}"><img class="pixel-avatar" src="${avatarDataUriForPlayer(player)}" alt="${player.name}" /><span>${player.name}</span></span>`;
 }
 
 function formatDivision(index) {
@@ -406,6 +506,7 @@ function createPlayer(draft, opts = {}) {
     id: nextPlayerId(draft),
     name: opts.name ?? createRandomName(),
     gender: "M",
+    avatarSeed: opts.avatarSeed ?? `${draft.career?.seasonNumber || 1}-${randomInt(100000, 999999999)}`,
     grade: opts.grade ?? randomInt(9, 12),
     position,
     heightInches,
@@ -621,6 +722,80 @@ function getVarsityPlayers(currentState) {
 function getJvPlayers(currentState) {
   const ids = new Set(currentState.team.rosters.jvIds);
   return currentState.program.rosterPlayers.filter((player) => ids.has(player.id));
+}
+
+function bestLineupIds(players, captainId = null) {
+  const ranked = [...players].sort((a, b) => playerOverall(b) - playerOverall(a));
+  let best = ranked.slice(0, 6).map((player) => player.id);
+  if (captainId && !best.includes(captainId) && ranked.some((player) => player.id === captainId)) {
+    best = [captainId, ...best.filter((id) => id !== captainId)].slice(0, 6);
+  }
+  return best;
+}
+
+function sanitizeLineupIds(players, lineupIds, captainId = null) {
+  const valid = new Set(players.map((player) => player.id));
+  const unique = [];
+  for (const id of lineupIds || []) {
+    if (valid.has(id) && !unique.includes(id)) unique.push(id);
+  }
+  const ranked = [...players].sort((a, b) => playerOverall(b) - playerOverall(a));
+  if (captainId && valid.has(captainId) && !unique.includes(captainId)) {
+    unique.unshift(captainId);
+  }
+  for (const player of ranked) {
+    if (unique.length >= 6) break;
+    if (!unique.includes(player.id)) unique.push(player.id);
+  }
+  return unique.slice(0, Math.min(6, players.length));
+}
+
+function ensureDefaultLineups(currentState) {
+  currentState.team.defaultLineups = currentState.team.defaultLineups || {
+    varsity: [],
+    jv: []
+  };
+  const varsity = getVarsityPlayers(currentState);
+  const jv = getJvPlayers(currentState);
+  currentState.team.defaultLineups.varsity = sanitizeLineupIds(
+    varsity,
+    currentState.team.defaultLineups.varsity || [],
+    currentState.team.captains?.varsityId
+  );
+  currentState.team.defaultLineups.jv = sanitizeLineupIds(
+    jv,
+    currentState.team.defaultLineups.jv || [],
+    currentState.team.captains?.jvId
+  );
+}
+
+function getDefaultLineupIds(currentState, teamType = "varsity") {
+  const players = teamType === "varsity" ? getVarsityPlayers(currentState) : getJvPlayers(currentState);
+  const captainId = teamType === "varsity" ? currentState.team.captains?.varsityId : currentState.team.captains?.jvId;
+  const saved = currentState.team.defaultLineups?.[teamType] || [];
+  return sanitizeLineupIds(players, saved.length ? saved : bestLineupIds(players, captainId), captainId);
+}
+
+function updateLineupSlot(lineupIds, slotIndex, selectedPlayerId, players, captainId = null) {
+  if (!players.length) return [];
+  const safeIndex = clamp(Number(slotIndex) || 0, 0, 5);
+  const validIds = new Set(players.map((player) => player.id));
+  if (!validIds.has(selectedPlayerId)) {
+    return sanitizeLineupIds(players, lineupIds, captainId);
+  }
+  const next = sanitizeLineupIds(players, lineupIds, captainId);
+  while (next.length < 6 && next.length < players.length) {
+    const fallback = players.find((player) => !next.includes(player.id));
+    if (!fallback) break;
+    next.push(fallback.id);
+  }
+  const existing = next.indexOf(selectedPlayerId);
+  if (existing >= 0) {
+    [next[safeIndex], next[existing]] = [next[existing], next[safeIndex]];
+  } else {
+    next[safeIndex] = selectedPlayerId;
+  }
+  return sanitizeLineupIds(players, next, captainId);
 }
 
 function buildLeagueStandingsMap(league) {
@@ -1026,6 +1201,10 @@ function finalizeTryouts(draft) {
   draft.team.captains = {
     varsityId: varsityCaptainId,
     jvId: jvCaptainId
+  };
+  draft.team.defaultLineups = {
+    varsity: sanitizeLineupIds(varsities, bestLineupIds(varsities, varsityCaptainId), varsityCaptainId),
+    jv: sanitizeLineupIds(jvs, bestLineupIds(jvs, jvCaptainId), jvCaptainId)
   };
 
   const continuity = varsities.filter((player) => (draft.program.returningRosterIds || []).includes(player.id)).length;
@@ -1773,8 +1952,11 @@ function playLeagueMatch(draft, weekId, matchId) {
 
   applyWeeklyEnergyScouting(draft, week);
   const varsity = getVarsityPlayers(draft).sort((a, b) => playerOverall(b) - playerOverall(a));
-  const defaultLineup = varsity.slice(0, 6).map((player) => player.id);
-  const bench = varsity.slice(6).map((player) => player.id);
+  ensureDefaultLineups(draft);
+  const defaultLineup = getDefaultLineupIds(draft, "varsity");
+  draft.team.defaultLineups.varsity = [...defaultLineup];
+  const lineupSet = new Set(defaultLineup);
+  const bench = varsity.filter((player) => !lineupSet.has(player.id)).map((player) => player.id);
   match.status = "pregame";
   match.pregame = {
     gameplan: "balanced",
@@ -1791,10 +1973,14 @@ function lockMatchPregame(draft, weekId, matchId) {
   if (!match || match.status !== "pregame" || !match.pregame) {
     return { ok: false, message: "No pregame setup to lock." };
   }
-  const lineupIds = match.pregame.lineupIds || [];
+  const varsity = getVarsityPlayers(draft);
+  const lineupIds = sanitizeLineupIds(varsity, match.pregame.lineupIds || [], draft.team.captains?.varsityId);
+  match.pregame.lineupIds = lineupIds;
   if (lineupIds.length !== 6) {
     return { ok: false, message: "Select exactly 6 starters before locking pregame." };
   }
+  draft.team.defaultLineups.varsity = [...lineupIds];
+  match.pregame.benchIds = varsity.filter((player) => !lineupIds.includes(player.id)).map((player) => player.id);
   const opponent = findTeamById(draft, match.opponentId);
   const context = buildLeagueMatchContext(draft, week, match, opponent, match.pregame);
   match.gameplan = match.pregame.gameplan;
@@ -2565,6 +2751,10 @@ function progressProgramForNextSeason(draft) {
     varsityId: null,
     jvId: null
   };
+  draft.team.defaultLineups = {
+    varsity: [],
+    jv: []
+  };
   draft.phase = "tryouts";
   const transferInterest = draft.offseason?.transferInterest || 0;
   const summary = {
@@ -2615,6 +2805,10 @@ function createInitialState() {
       captains: {
         varsityId: null,
         jvId: null
+      },
+      defaultLineups: {
+        varsity: [],
+        jv: []
       }
     },
     program: {
@@ -2760,6 +2954,7 @@ function migrateLegacyPlayer(player) {
   if (!player || typeof player !== "object") return player;
   const migrated = { ...player };
   migrated.gender = "M";
+  migrated.avatarSeed = migrated.avatarSeed ?? `${migrated.id || migrated.name || "legacy"}-${hashSeed(migrated.name || migrated.id || Date.now())}`;
   const athleticismSeed = migrated.athleticism ?? migrated.resilience ?? 58;
   const defenseSeed = migrated.defense ?? migrated.passing ?? 58;
   const attackSeed = migrated.attack ?? migrated.hitting ?? 58;
@@ -2822,9 +3017,10 @@ function normalizeLoadedState(loaded) {
   const normalized = loaded;
   normalized.notices = normalized.notices || [];
   normalized.preseason = normalized.preseason || { selectedTournamentIds: [] };
-  normalized.team = normalized.team || { chemistry: 55, rosters: { varsityIds: [], jvIds: [] } };
+  normalized.team = normalized.team || { chemistry: 55, rosters: { varsityIds: [], jvIds: [] }, defaultLineups: { varsity: [], jv: [] } };
   normalized.team.rosters = normalized.team.rosters || { varsityIds: [], jvIds: [] };
   normalized.team.captains = normalized.team.captains || { varsityId: null, jvId: null };
+  normalized.team.defaultLineups = normalized.team.defaultLineups || { varsity: [], jv: [] };
   normalized.program = normalized.program || {
     rosterPlayers: [],
     freeAgents: [],
@@ -2845,6 +3041,7 @@ function normalizeLoadedState(loaded) {
   if (!normalized.team.captains.jvId && normalized.team.rosters.jvIds?.length) {
     normalized.team.captains.jvId = autoCaptainFromRosterIds(normalized, normalized.team.rosters.jvIds);
   }
+  ensureDefaultLineups(normalized);
   if (normalized.tryouts?.candidates) {
     normalized.tryouts.candidates = normalized.tryouts.candidates.map(migrateLegacyPlayer);
     normalized.tryouts.captainSelections = normalized.tryouts.captainSelections || {
@@ -2879,6 +3076,9 @@ function normalizeLoadedState(loaded) {
   }
   if (normalized.phase === "season" && normalized.season?.weeks) {
     normalized.season.viewTab = normalized.season.viewTab || "matchday";
+    if (!["matchday", "standings", "players", "lineup"].includes(normalized.season.viewTab)) {
+      normalized.season.viewTab = "matchday";
+    }
     normalized.season.opponentIntel = normalized.season.opponentIntel || initializeOpponentIntel(normalized);
     for (const intel of Object.values(normalized.season.opponentIntel || {})) {
       intel.knowledge = clamp(intel.knowledge ?? 0, 0, 100);
@@ -2922,6 +3122,17 @@ function normalizeLoadedState(loaded) {
         }
         if (match.status === "pregame" && !match.pregame) {
           match.status = "pending";
+        }
+        if (match.pregame) {
+          const varsity = getVarsityPlayers(normalized);
+          match.pregame.lineupIds = sanitizeLineupIds(
+            varsity,
+            match.pregame.lineupIds || [],
+            normalized.team.captains?.varsityId
+          );
+          match.pregame.benchIds = varsity
+            .filter((player) => !match.pregame.lineupIds.includes(player.id))
+            .map((player) => player.id);
         }
       }
     }
@@ -2987,6 +3198,7 @@ function startCareerFromOnboarding(draft, coachName, schoolName, mascot) {
   draft.world = createWorldForSeason(draft.career, draft.career.schoolName, draft.career.mascot);
   draft.team.chemistry = 55;
   draft.team.captains = { varsityId: null, jvId: null };
+  draft.team.defaultLineups = { varsity: [], jv: [] };
   draft.program.incomingCommits = [];
   draft.phase = "tryouts";
   generateTryoutPool(draft);
@@ -3020,6 +3232,7 @@ function startSeason(draft) {
   if (!canStartSeason(draft)) {
     return { ok: false, message: "Select two tournaments and set both captains before starting." };
   }
+  ensureDefaultLineups(draft);
   initializeSeasonState(draft);
   draft.phase = "season";
   draft.offseason = null;
@@ -3183,10 +3396,32 @@ function handleClick(event) {
     mutate(
       (draft) => {
         if (!draft.season) return;
-        if (!["matchday", "standings", "players"].includes(tab)) return;
+        if (!["matchday", "standings", "players", "lineup"].includes(tab)) return;
         draft.season.viewTab = tab;
       },
       "season-tab"
+    );
+    return;
+  }
+
+  if (action === "default-lineup-auto") {
+    const teamType = target.dataset.team || "varsity";
+    mutate(
+      (draft) => {
+        ensureDefaultLineups(draft);
+        const players = teamType === "varsity" ? getVarsityPlayers(draft) : getJvPlayers(draft);
+        const captainId = teamType === "varsity" ? draft.team.captains?.varsityId : draft.team.captains?.jvId;
+        if (!players.length) return;
+        draft.team.defaultLineups[teamType] = bestLineupIds(players, captainId);
+        draft.notices = [
+          {
+            id: Date.now(),
+            tone: "good",
+            message: `Default ${teamType.toUpperCase()} lineup reset to best available six.`
+          }
+        ];
+      },
+      "default-lineup-auto"
     );
     return;
   }
@@ -3531,6 +3766,51 @@ function handleChange(event) {
     return;
   }
 
+  if (action === "default-lineup-slot") {
+    const slot = Number(target.dataset.slot);
+    const teamType = target.dataset.team || "varsity";
+    const playerId = target.value;
+    mutate(
+      (draft) => {
+        ensureDefaultLineups(draft);
+        const players = teamType === "varsity" ? getVarsityPlayers(draft) : getJvPlayers(draft);
+        if (!players.length) return;
+        const captainId = teamType === "varsity" ? draft.team.captains?.varsityId : draft.team.captains?.jvId;
+        const lineup = updateLineupSlot(draft.team.defaultLineups[teamType], slot, playerId, players, captainId);
+        draft.team.defaultLineups[teamType] = lineup;
+      },
+      "default-lineup-slot"
+    );
+    return;
+  }
+
+  if (action === "pregame-lineup-slot") {
+    const weekId = target.dataset.weekId;
+    const matchId = target.dataset.matchId;
+    const slot = Number(target.dataset.slot);
+    const playerId = target.value;
+    mutate(
+      (draft) => {
+        const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
+        if (!week || week.kind !== "league") return;
+        const match = week.matches.find((candidate) => candidate.id === matchId);
+        if (!match || match.status !== "pregame" || !match.pregame) return;
+        const varsity = getVarsityPlayers(draft);
+        const lineup = updateLineupSlot(
+          match.pregame.lineupIds || [],
+          slot,
+          playerId,
+          varsity,
+          draft.team.captains?.varsityId
+        );
+        match.pregame.lineupIds = lineup;
+        match.pregame.benchIds = varsity.filter((player) => !lineup.includes(player.id)).map((player) => player.id);
+      },
+      "pregame-lineup-slot"
+    );
+    return;
+  }
+
   if (action === "pregame-lineup") {
     const weekId = target.dataset.weekId;
     const matchId = target.dataset.matchId;
@@ -3550,9 +3830,11 @@ function handleChange(event) {
         }
         const array = [...ids];
         if (array.length > 6) return;
-        match.pregame.lineupIds = array;
-        const varsityIds = new Set(getVarsityPlayers(draft).map((player) => player.id));
-        match.pregame.benchIds = [...varsityIds].filter((id) => !ids.has(id));
+        const varsity = getVarsityPlayers(draft);
+        const lineup = sanitizeLineupIds(varsity, array, draft.team.captains?.varsityId);
+        match.pregame.lineupIds = lineup;
+        const lineupSet = new Set(lineup);
+        match.pregame.benchIds = varsity.filter((player) => !lineupSet.has(player.id)).map((player) => player.id);
       },
       "pregame-lineup"
     );
@@ -3663,7 +3945,7 @@ function renderSidebar() {
                     .map(
                       (player) => `
                     <tr>
-                      <td>${player.name}</td>
+                      <td>${renderPlayerIdentity(player, true)}</td>
                       <td>${player.position}</td>
                       <td>${gradeLabel(player.grade)}</td>
                       <td class="right">${playerOverall(player)}</td>
@@ -3821,7 +4103,7 @@ function renderTryouts() {
                 const assignment = state.tryouts.assignments[player.id] || "cut";
                 return `
                   <tr>
-                    <td>${player.name}</td>
+                    <td>${renderPlayerIdentity(player, true)}</td>
                     <td>${player.position}</td>
                     <td>${gradeLabel(player.grade)}</td>
                     <td class="right">${formatHeight(player.heightInches)}</td>
@@ -3960,6 +4242,87 @@ function renderWeeklyFocus(week) {
   `;
 }
 
+function renderLineupBoard(players, lineupIds, opts = {}) {
+  const editable = Boolean(opts.editable);
+  const teamType = opts.teamType || "varsity";
+  const action = opts.action || "default-lineup-slot";
+  const captainId = opts.captainId || null;
+  const sortedPlayers = [...players].sort((a, b) => playerOverall(b) - playerOverall(a));
+  const normalizedLineup = sanitizeLineupIds(sortedPlayers, lineupIds || [], captainId);
+  const lineupMap = new Map(sortedPlayers.map((player) => [player.id, player]));
+  const lineupSet = new Set(normalizedLineup);
+  const benchPlayers = sortedPlayers.filter((player) => !lineupSet.has(player.id));
+
+  const slotHtml = LINEUP_SLOT_ORDER.map((slot) => {
+    const playerId = normalizedLineup[slot] || "";
+    const player = lineupMap.get(playerId) || null;
+    const selectAttrs = [
+      `data-action="${action}"`,
+      `data-slot="${slot}"`,
+      teamType ? `data-team="${teamType}"` : "",
+      opts.weekId ? `data-week-id="${opts.weekId}"` : "",
+      opts.matchId ? `data-match-id="${opts.matchId}"` : ""
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return `
+      <div class="lineup-slot slot-${slot + 1}">
+        <div class="lineup-slot-index">#${slot + 1}</div>
+        ${
+          player
+            ? `<img class="pixel-avatar lineup-avatar" src="${avatarDataUriForPlayer(player)}" alt="${player.name}" />`
+            : `<div class="lineup-avatar lineup-avatar-empty"></div>`
+        }
+        <div class="lineup-slot-name">${player ? player.name : "Open Slot"}</div>
+        <div class="footnote">${player ? `${player.position} | OVR ${playerOverall(player)} | LDR ${player.leadership}` : "Select a starter"}</div>
+        ${
+          editable
+            ? `
+            <select class="select lineup-select" ${selectAttrs}>
+              ${sortedPlayers
+                .map(
+                  (candidate) =>
+                    `<option value="${candidate.id}" ${candidate.id === playerId ? "selected" : ""}>${candidate.name} (${candidate.position}, OVR ${playerOverall(candidate)})</option>`
+                )
+                .join("")}
+            </select>
+          `
+            : ""
+        }
+      </div>
+    `;
+  }).join("");
+
+  const benchHtml = benchPlayers.length
+    ? benchPlayers
+        .map(
+          (player) => `
+            <span class="bench-chip">
+              <img class="pixel-avatar bench-avatar" src="${avatarDataUriForPlayer(player)}" alt="${player.name}" />
+              <span>${player.name} (${player.position}, ${playerOverall(player)})</span>
+            </span>
+          `
+        )
+        .join("")
+    : `<span class="subtle">No bench players available.</span>`;
+
+  return `
+    <div class="lineup-board-wrap">
+      <div class="lineup-board-header">
+        <h4>${opts.title || "Lineup"}</h4>
+        <p class="subtle">${opts.subtitle || "Set your on-court rotation and bench order."}</p>
+      </div>
+      <div class="lineup-court">
+        ${slotHtml}
+      </div>
+      <div class="lineup-bench">
+        <strong>Bench</strong>
+        <div class="lineup-bench-list">${benchHtml}</div>
+      </div>
+    </div>
+  `;
+}
+
 function renderMatchCard(week, match) {
   const opponent = findTeamById(state, match.opponentId);
   const intel = state.season?.opponentIntel?.[match.opponentId];
@@ -3986,7 +4349,7 @@ function renderMatchCard(week, match) {
 
   if (match.status === "pregame" && match.pregame) {
     const varsity = getVarsityPlayers(state).slice().sort((a, b) => playerOverall(b) - playerOverall(a));
-    const lineupIds = new Set(match.pregame.lineupIds || []);
+    const pregameLineup = sanitizeLineupIds(varsity, match.pregame.lineupIds || [], state.team.captains?.varsityId);
     const intelHints = [];
     if (intel?.playstyleKnown) intelHints.push("Playstyle mapped");
     if (intel?.strengthKnown) intelHints.push(`Strength: ${traitLabel(intel.strengthTrait)}`);
@@ -4008,18 +4371,17 @@ function renderMatchCard(week, match) {
             ${GAMEPLAN_OPTIONS.map((option) => `<option value="${option.id}" ${match.pregame.gameplan === option.id ? "selected" : ""}>${option.label}</option>`).join("")}
           </select>
         </label>
-        <p class="subtle" style="margin-top:0.65rem;">Select exactly 6 starters (Varsity match lineup):</p>
-        <div class="grid-two">
-          ${varsity
-            .map(
-              (player) => `
-              <label>
-                <input type="checkbox" data-action="pregame-lineup" data-week-id="${week.id}" data-match-id="${match.id}" data-player-id="${player.id}" ${lineupIds.has(player.id) ? "checked" : ""} />
-                ${player.name} (${player.position}) OVR ${playerOverall(player)} LDR ${player.leadership}
-              </label>
-            `
-            )
-            .join("")}
+        <div style="margin-top:0.65rem;">
+          ${renderLineupBoard(varsity, pregameLineup, {
+            editable: true,
+            action: "pregame-lineup-slot",
+            teamType: "varsity",
+            weekId: week.id,
+            matchId: match.id,
+            captainId: state.team.captains?.varsityId,
+            title: "Match Lineup",
+            subtitle: "This starts from your saved default lineup. Adjust if needed for this opponent."
+          })}
         </div>
         <button style="margin-top:0.7rem;" class="btn btn-primary" data-action="lock-pregame" data-week-id="${week.id}" data-match-id="${match.id}">
           Lock Gameplan + Lineup
@@ -4236,7 +4598,7 @@ function renderSeasonPlayerStatsTab() {
                       : "";
                 return `
                   <tr>
-                    <td>${player.name} ${captainTag}</td>
+                    <td>${renderPlayerIdentity(player, true)} ${captainTag}</td>
                     <td>${teamLabel}</td>
                     <td>${player.position}</td>
                     <td>${gradeLabel(player.grade)}</td>
@@ -4264,6 +4626,48 @@ function renderSeasonPlayerStatsTab() {
   `;
 }
 
+function renderSeasonLineupTab() {
+  const varsity = getVarsityPlayers(state).slice().sort((a, b) => playerOverall(b) - playerOverall(a));
+  if (!varsity.length) {
+    return `
+      <div class="card">
+        <h3>Default Lineup</h3>
+        <p class="subtle">No Varsity roster found.</p>
+      </div>
+    `;
+  }
+  const lineup = getDefaultLineupIds(state, "varsity");
+  const captain = varsity.find((player) => player.id === state.team.captains?.varsityId);
+  const lineupLeadership = lineup
+    .map((id) => varsity.find((player) => player.id === id))
+    .filter(Boolean)
+    .reduce((sum, player) => sum + player.leadership, 0);
+  const averageLeadership = Math.round(lineupLeadership / Math.max(lineup.length, 1));
+  return `
+    <div class="card">
+      <h3>Default Varsity Lineup</h3>
+      <p class="subtle">This lineup is auto-loaded every time you open pregame match prep.</p>
+      <div class="line" style="justify-content:flex-start; gap:0.45rem; flex-wrap:wrap; margin-top:0.45rem;">
+        <span class="tag">Captain: ${captain ? `${captain.name} (LDR ${captain.leadership})` : "Unset"}</span>
+        <span class="tag">Lineup Avg LDR ${averageLeadership}</span>
+      </div>
+      <div style="margin-top:0.6rem;">
+        ${renderLineupBoard(varsity, lineup, {
+          editable: true,
+          action: "default-lineup-slot",
+          teamType: "varsity",
+          captainId: state.team.captains?.varsityId,
+          title: "Court View",
+          subtitle: "Use each slot dropdown to set your default 6-man rotation."
+        })}
+      </div>
+      <div class="line" style="justify-content:flex-start; margin-top:0.7rem;">
+        <button class="btn btn-secondary" data-action="default-lineup-auto" data-team="varsity">Auto Best 6</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderSeason() {
   const week = getCurrentWeek();
   if (!week) {
@@ -4280,7 +4684,8 @@ function renderSeason() {
   const tabButtons = [
     { id: "matchday", label: "Matchday" },
     { id: "standings", label: "Standings" },
-    { id: "players", label: "Player Stats" }
+    { id: "players", label: "Player Stats" },
+    { id: "lineup", label: "Lineup" }
   ];
 
   let tabContent = "";
@@ -4288,6 +4693,8 @@ function renderSeason() {
     tabContent = renderSeasonStandingsTab();
   } else if (activeTab === "players") {
     tabContent = renderSeasonPlayerStatsTab();
+  } else if (activeTab === "lineup") {
+    tabContent = renderSeasonLineupTab();
   } else {
     tabContent = `
       ${renderWeeklyFocus(week)}
