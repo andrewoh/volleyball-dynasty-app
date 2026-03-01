@@ -12,11 +12,11 @@ const RESUME_QUALITY_WIN_STRENGTH = 70;
 const RESUME_BAD_LOSS_STRENGTH = 56;
 const SEASON_PHASE_STAGES = ["tryouts", "preseason", "season", "postseason", "offseason"];
 const TRYOUT_POSITION_RULES = [
-  { id: "LIB", label: "Libero", varsity: 2, jv: 2 },
-  { id: "OH", label: "Outside Hitter", varsity: 3, jv: 3 },
-  { id: "MB", label: "Middle Blocker", varsity: 3, jv: 3 },
-  { id: "S", label: "Setter", varsity: 2, jv: 2 },
-  { id: "RS", label: "Opposite", varsity: 2, jv: 2 }
+  { id: "LIB", label: "Libero", varsity: 2, jv: 2, cuts: 3 },
+  { id: "OH", label: "Outside Hitter", varsity: 3, jv: 3, cuts: 3 },
+  { id: "MB", label: "Middle Blocker", varsity: 3, jv: 3, cuts: 3 },
+  { id: "S", label: "Setter", varsity: 2, jv: 2, cuts: 3 },
+  { id: "RS", label: "Opposite", varsity: 2, jv: 2, cuts: 3 }
 ];
 const LINEUP_ROLE_SLOTS = [
   { index: 0, label: "Outside 1", expectedPosition: "OH" },
@@ -232,6 +232,17 @@ const SKILL_SHORT_LABELS = {
   awareness: "AWR",
   resilience: "RES",
   leadership: "LDR"
+};
+const SKILL_LONG_LABELS = {
+  serving: "Serving",
+  passing: "Passing",
+  setting: "Setting",
+  hitting: "Hitting",
+  blocking: "Blocking",
+  athleticism: "Athleticism",
+  awareness: "Awareness",
+  resilience: "Resilience",
+  leadership: "Leadership"
 };
 const POSITION_TRYOUT_SKILL_PRIORITY = {
   LIB: ["passing", "awareness", "resilience", "athleticism", "serving", "leadership"],
@@ -629,6 +640,10 @@ function skillShortLabel(skill) {
   return SKILL_SHORT_LABELS[skill] || skill.toUpperCase();
 }
 
+function skillLongLabel(skill) {
+  return SKILL_LONG_LABELS[skill] || skill;
+}
+
 function tryoutSkillPriorityForPosition(position) {
   return POSITION_TRYOUT_SKILL_PRIORITY[position] || POSITION_TRYOUT_SKILL_PRIORITY.OH;
 }
@@ -982,6 +997,12 @@ function validateTryoutPositionLocked(tryouts, positionId) {
     return {
       ok: false,
       message: `${rule.label} requires Varsity ${rule.varsity} and JV ${rule.jv}.`
+    };
+  }
+  if (counts.cut < (rule.cuts || 0)) {
+    return {
+      ok: false,
+      message: `${rule.label} needs at least ${rule.cuts} cuts before locking.`
     };
   }
   return { ok: true };
@@ -1384,7 +1405,7 @@ function autoCaptainFromRosterIds(currentState, ids) {
 function ensureTryoutPositionDepth(draft, pool) {
   let added = 0;
   for (const rule of TRYOUT_POSITION_RULES) {
-    const required = rule.varsity + rule.jv;
+    const required = rule.varsity + rule.jv + (rule.cuts || 0);
     const current = pool.filter((player) => player.position === rule.id).length;
     const deficit = Math.max(0, required - current);
     for (let i = 0; i < deficit; i += 1) {
@@ -1494,7 +1515,7 @@ function generateTryoutPool(draft, summary = null) {
   );
   const forcedPositionAdds = ensureTryoutPositionDepth(draft, pool);
 
-  const minimumPool = 26;
+  const minimumPool = TRYOUT_POSITION_RULES.reduce((sum, rule) => sum + rule.varsity + rule.jv + (rule.cuts || 0), 0);
   let extraWalkOns = 0;
   while (pool.length < minimumPool) {
     pool.push(
@@ -1761,6 +1782,8 @@ function initializeSeasonState(draft) {
     },
     leagueStandings: buildLeagueStandingsMap(draft.world.leagues[0]),
     opponentIntel: initializeOpponentIntel(draft),
+    callupsUsed: 0,
+    callupsLog: [],
     rankingPoints: 0,
     matchesPlayed: [],
     tournamentResults: [],
@@ -3565,6 +3588,17 @@ function normalizeLoadedState(loaded) {
   normalized.meta = normalized.meta || { nextPlayerCounter: 1, lastAction: "hydrate" };
   normalized.meta.nextPlayerCounter = normalized.meta.nextPlayerCounter || 1;
   normalized.meta.nextRecruitCounter = normalized.meta.nextRecruitCounter || 1;
+  if (normalized.tryouts?.candidates) {
+    const addedDepth = ensureTryoutPositionDepth(normalized, normalized.tryouts.candidates);
+    if (addedDepth > 0) {
+      normalized.tryouts.assignments = normalized.tryouts.assignments || {};
+      for (const candidate of normalized.tryouts.candidates) {
+        if (!normalized.tryouts.assignments[candidate.id]) normalized.tryouts.assignments[candidate.id] = "cut";
+      }
+      normalized.tryouts.summary = normalized.tryouts.summary || {};
+      normalized.tryouts.summary.walkOns = (normalized.tryouts.summary.walkOns || 0) + addedDepth;
+    }
+  }
   if (normalized.offseason?.recruits && normalized.offseason.recruitingPoints == null) {
     normalized.offseason.recruitingPoints = recruitingPointBudget(normalized.career);
   }
@@ -3580,6 +3614,8 @@ function normalizeLoadedState(loaded) {
     if (!["matchday", "standings", "players", "lineup"].includes(normalized.season.viewTab)) {
       normalized.season.viewTab = "matchday";
     }
+    normalized.season.callupsUsed = clamp(normalized.season.callupsUsed || 0, 0, 3);
+    normalized.season.callupsLog = normalized.season.callupsLog || [];
     normalized.season.opponentIntel = normalized.season.opponentIntel || initializeOpponentIntel(normalized);
     for (const intel of Object.values(normalized.season.opponentIntel || {})) {
       intel.knowledge = clamp(intel.knowledge ?? 0, 0, 100);
@@ -3924,6 +3960,33 @@ function handleClick(event) {
         if (draft.tryouts.captainSelections?.jvId === playerId && value !== "jv") {
           draft.tryouts.captainSelections.jvId = null;
         }
+        const updatedCounts = getTryoutPositionCounts(draft.tryouts, activePosition);
+        const readyToLock =
+          updatedCounts.varsity === (rule?.varsity || 0) &&
+          updatedCounts.jv === (rule?.jv || 0) &&
+          updatedCounts.cut >= (rule?.cuts || 0);
+        if (readyToLock) {
+          draft.tryouts.positionLocks[activePosition] = true;
+          const next = TRYOUT_POSITION_RULES.find((candidate) => !draft.tryouts.positionLocks[candidate.id]);
+          if (next) {
+            draft.tryouts.activePositionId = next.id;
+            draft.notices = [
+              {
+                id: Date.now(),
+                tone: "good",
+                message: `${positionLabel(activePosition)} complete and locked. Auto-advanced to ${next.label}.`
+              }
+            ];
+          } else {
+            draft.notices = [
+              {
+                id: Date.now(),
+                tone: "good",
+                message: "All position groups complete. Select captains and finalize tryouts."
+              }
+            ];
+          }
+        }
       },
       `set-assignment-${value}`
     );
@@ -4021,6 +4084,56 @@ function handleClick(event) {
         draft.season.viewTab = tab;
       },
       "season-tab"
+    );
+    return;
+  }
+
+  if (action === "callup-player") {
+    const playerId = target.dataset.playerId;
+    mutate(
+      (draft) => {
+        if (draft.phase !== "season" || !draft.season) return;
+        const seasonCallupsUsed = draft.season.callupsUsed || 0;
+        if (seasonCallupsUsed >= 3) {
+          draft.notices = [{ id: Date.now(), tone: "bad", message: "Call-up limit reached (3 per season)." }];
+          return;
+        }
+        const varsityIds = draft.team.rosters.varsityIds || [];
+        const jvIds = draft.team.rosters.jvIds || [];
+        if (varsityIds.length >= 15) {
+          draft.notices = [{ id: Date.now(), tone: "bad", message: "Varsity roster is full (15 max)." }];
+          return;
+        }
+        if (!jvIds.includes(playerId) || varsityIds.includes(playerId)) {
+          draft.notices = [{ id: Date.now(), tone: "bad", message: "Only current JV players can be called up." }];
+          return;
+        }
+        const player = draft.program.rosterPlayers.find((candidate) => candidate.id === playerId);
+        if (!player) return;
+        draft.team.rosters.jvIds = jvIds.filter((id) => id !== playerId);
+        draft.team.rosters.varsityIds = [...varsityIds, playerId];
+        draft.season.callupsUsed = seasonCallupsUsed + 1;
+        draft.season.callupsLog = draft.season.callupsLog || [];
+        draft.season.callupsLog.unshift({
+          playerId,
+          playerName: player.name,
+          week: draft.season.weekIndex + 1,
+          at: Date.now()
+        });
+        draft.season.callupsLog = draft.season.callupsLog.slice(0, 10);
+        if (draft.team.captains?.jvId === playerId) {
+          draft.team.captains.jvId = autoCaptainFromRosterIds(draft, draft.team.rosters.jvIds) || null;
+        }
+        ensureDefaultLineups(draft);
+        draft.notices = [
+          {
+            id: Date.now(),
+            tone: "good",
+            message: `${player.name} called up to Varsity. ${Math.max(0, 3 - draft.season.callupsUsed)} call-ups remaining.`
+          }
+        ];
+      },
+      "callup-player"
     );
     return;
   }
@@ -4726,7 +4839,10 @@ function renderTryouts() {
   const activeLocked = Boolean(locks[activePositionId]);
   const allLocked = allTryoutPositionsLocked(tryouts);
   const activeCounts = getTryoutPositionCounts(tryouts, activePositionId);
-  const activeFocusSkills = tryoutSkillPriorityForPosition(activePositionId).slice(0, 6);
+  const prioritizedSkills = tryoutSkillPriorityForPosition(activePositionId);
+  const primaryFocusSkills = prioritizedSkills.slice(0, 4);
+  const orderedSkillKeys = [...prioritizedSkills, ...SKILLS.filter((skill) => !prioritizedSkills.includes(skill))];
+  const activeStep = Math.max(1, TRYOUT_POSITION_RULES.findIndex((rule) => rule.id === activePositionId) + 1);
   const focusDescriptions = {
     LIB: "Prioritize serve receive floor control and defensive consistency.",
     OH: "Prioritize terminal offense with stable passing in transition.",
@@ -4748,7 +4864,7 @@ function renderTryouts() {
     <div class="stack">
       <div class="card">
         <h2>Tryouts</h2>
-        <p class="subtle">Assign one position group at a time, then lock it in before moving to the next. Quotas: LIB 2/2, OH 3/3, MB 3/3, S 2/2, RS 2/2.</p>
+        <p class="subtle">Assign one position group at a time. Each group auto-locks and advances when quotas are met. Every position has 3 mandatory cuts.</p>
         <div class="grid-three" style="margin-top:0.7rem;">
           <div class="kpi"><strong>${tryouts.summary.returning}</strong><span>Returning Tryouts</span></div>
           <div class="kpi"><strong>${tryouts.summary.transfers}</strong><span>Transfers</span></div>
@@ -4761,6 +4877,7 @@ function renderTryouts() {
             <span class="tag">JV ${counts.jv}/12</span>
             <span class="tag">Cuts ${counts.cut}</span>
             <span class="tag">${allLocked ? "All Position Groups Locked" : "Position Groups In Progress"}</span>
+            <span class="tag">Step ${activeStep}/${TRYOUT_POSITION_RULES.length}</span>
           </div>
           <div>
             <button class="btn btn-secondary" data-action="tryout-autofill" data-mode="skill">Auto by Skill</button>
@@ -4775,7 +4892,7 @@ function renderTryouts() {
             return `
               <button class="btn ${active ? "btn-accent" : "btn-secondary"} tryout-position-pill ${done ? "done" : ""}" data-action="tryout-position" data-position-id="${rule.id}">
                 ${rule.label} ${done ? "✓" : ""}
-                <span class="footnote">${ruleCounts.varsity}/${rule.varsity} V · ${ruleCounts.jv}/${rule.jv} JV</span>
+                <span class="footnote">${ruleCounts.varsity}/${rule.varsity} V · ${ruleCounts.jv}/${rule.jv} JV · ${ruleCounts.cut}/${rule.cuts} Cut</span>
               </button>
             `;
           }).join("")}
@@ -4784,11 +4901,15 @@ function renderTryouts() {
           <span class="tag">Active: ${activeRule.label}</span>
           <span class="tag">Varsity ${activeCounts.varsity}/${activeRule.varsity}</span>
           <span class="tag">JV ${activeCounts.jv}/${activeRule.jv}</span>
+          <span class="tag">Cuts ${activeCounts.cut}/${activeRule.cuts}</span>
           <button class="btn ${activeLocked ? "btn-secondary" : "btn-primary"}" data-action="tryout-lock-position">
             ${activeLocked ? `Unlock ${activeRule.label}` : `Lock ${activeRule.label}`}
           </button>
         </div>
         <p class="footnote" style="margin-top:0.55rem;">${focusDescriptions[activePositionId] || "Prioritize role fit for this position group."}</p>
+        <div class="tryout-skill-legend" style="margin-top:0.3rem;">
+          ${SKILLS.map((skill) => `<span class="tag">${skillShortLabel(skill)} = ${skillLongLabel(skill)}</span>`).join("")}
+        </div>
         <div class="grid-two" style="margin-top:0.8rem;">
           <label>
             Varsity Captain
@@ -4821,10 +4942,10 @@ function renderTryouts() {
         <div class="line" style="margin-bottom:0.6rem; gap:0.45rem; align-items:flex-start;">
           <div>
             <h3 style="margin:0;">${activeRule.label} Candidates</h3>
-            <p class="subtle" style="margin:0.2rem 0 0;">Set assignments for this role only. Sort order favors position fit.</p>
+            <p class="subtle" style="margin:0.2rem 0 0;">Set assignments for this role only. Cards show all skills; highlighted skills are highest priority for ${activeRule.label}.</p>
           </div>
           <div style="display:flex; flex-wrap:wrap; gap:0.28rem;">
-            ${activeFocusSkills.map((skill) => `<span class="tag">${skillShortLabel(skill)}</span>`).join("")}
+            ${primaryFocusSkills.map((skill) => `<span class="tag good">${skillLongLabel(skill)}</span>`).join("")}
           </div>
         </div>
         <div class="tryout-player-list">
@@ -4863,8 +4984,11 @@ function renderTryouts() {
                     <div><strong>AT</strong><span>${formatHeight(player.approachTouch)}</span></div>
                   </div>
                   <div class="tryout-skill-grid">
-                    ${activeFocusSkills
-                      .map((skill) => `<div><span>${skillShortLabel(skill)}</span><strong>${player[skill]}</strong></div>`)
+                    ${orderedSkillKeys
+                      .map((skill) => {
+                        const priorityClass = primaryFocusSkills.includes(skill) ? "priority" : "";
+                        return `<div class="${priorityClass}"><span>${skillLongLabel(skill)} <em>(${skillShortLabel(skill)})</em></span><strong>${player[skill]}</strong></div>`;
+                      })
                       .join("")}
                   </div>
                   <div class="tryout-assignment-row">
@@ -5346,10 +5470,19 @@ function renderSeasonStandingsTab() {
 
 function renderSeasonPlayerStatsTab() {
   const players = [...state.program.rosterPlayers].sort((a, b) => b.seasonStats.impact - a.seasonStats.impact);
+  const callupsUsed = state.season?.callupsUsed || 0;
+  const callupsRemaining = Math.max(0, 3 - callupsUsed);
+  const varsitySize = state.team.rosters.varsityIds.length;
   return `
     <div class="card">
       <h3>Player Season Stats</h3>
       <p class="subtle">Track development and production throughout the year.</p>
+      <p class="footnote">${SKILLS.map((skill) => `${skillShortLabel(skill)} = ${skillLongLabel(skill)}`).join(" · ")}</p>
+      <div class="line" style="justify-content:flex-start; gap:0.45rem; flex-wrap:wrap; margin-bottom:0.5rem;">
+        <span class="tag">JV to Varsity Call-ups: ${callupsUsed}/3 used</span>
+        <span class="tag">Remaining: ${callupsRemaining}</span>
+        <span class="tag">Varsity Roster: ${varsitySize}/15</span>
+      </div>
       <div style="overflow-x:auto;">
         <table>
           <thead>
@@ -5372,16 +5505,27 @@ function renderSeasonPlayerStatsTab() {
               <th class="right">AW</th>
               <th class="right">RS</th>
               <th class="right">LD</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
             ${players
               .map((player) => {
-                const teamLabel = state.team.rosters.varsityIds.includes(player.id)
-                  ? "Varsity"
-                  : state.team.rosters.jvIds.includes(player.id)
-                    ? "JV"
-                    : "Program";
+                const isVarsity = state.team.rosters.varsityIds.includes(player.id);
+                const isJv = state.team.rosters.jvIds.includes(player.id);
+                const teamLabel = isVarsity ? "Varsity" : isJv ? "JV" : "Program";
+                const canCallUp =
+                  isJv &&
+                  callupsRemaining > 0 &&
+                  varsitySize < 15 &&
+                  state.phase === "season";
+                const actionCell = canCallUp
+                  ? `<button class="btn btn-secondary" data-action="callup-player" data-player-id="${player.id}">Call Up</button>`
+                  : isVarsity
+                    ? "<span class='footnote'>Locked on Varsity</span>"
+                    : isJv
+                      ? "<span class='footnote'>Ineligible now</span>"
+                      : "<span class='footnote'>-</span>";
                 const captainTag =
                   player.id === state.team.captains?.varsityId
                     ? "<span class='tag good'>V C</span>"
@@ -5408,6 +5552,7 @@ function renderSeasonPlayerStatsTab() {
                     <td class="right">${player.awareness}</td>
                     <td class="right">${player.resilience}</td>
                     <td class="right">${player.leadership}</td>
+                    <td>${actionCell}</td>
                   </tr>
                 `;
               })
@@ -5478,6 +5623,8 @@ function renderSeason() {
   const liveMatches = week.kind === "league" ? week.matches.filter((match) => match.status === "live").length : 0;
   const varsityCaptain = state.program.rosterPlayers.find((player) => player.id === state.team.captains?.varsityId);
   const jvCaptain = state.program.rosterPlayers.find((player) => player.id === state.team.captains?.jvId);
+  const callupsUsed = state.season.callupsUsed || 0;
+  const callupsRemaining = Math.max(0, 3 - callupsUsed);
   const activeTab = state.season.viewTab || "matchday";
   const tabButtons = [
     { id: "matchday", label: "Matchday" },
@@ -5521,6 +5668,8 @@ function renderSeason() {
           <span class="tag">Ranking ${state.season.rankingPoints}</span>
           <span class="tag">V Captain: ${varsityCaptain ? `${varsityCaptain.name} (${varsityCaptain.leadership})` : "Unset"}</span>
           <span class="tag">JV Captain: ${jvCaptain ? `${jvCaptain.name} (${jvCaptain.leadership})` : "Unset"}</span>
+          <span class="tag">Call-ups Left: ${callupsRemaining}</span>
+          <span class="tag">Varsity Size: ${state.team.rosters.varsityIds.length}/15</span>
         </div>
       </div>
       <div class="card">

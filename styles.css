@@ -417,6 +417,12 @@ body {
   gap: 0.28rem;
 }
 
+.tryout-skill-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
 .tryout-physical-grid {
   margin-top: 0.48rem;
   display: grid;
@@ -464,11 +470,21 @@ body {
   color: #6a5b46;
 }
 
+.tryout-skill-grid em {
+  font-style: normal;
+  color: #8a7a62;
+}
+
 .tryout-skill-grid strong {
   font-family: "Bebas Neue", sans-serif;
   font-size: 0.92rem;
   letter-spacing: 0.04em;
   color: #2f271d;
+}
+
+.tryout-skill-grid div.priority {
+  border-color: rgba(20, 86, 143, 0.35);
+  background: rgba(220, 236, 250, 0.92);
 }
 
 .tryout-assignment-row {
