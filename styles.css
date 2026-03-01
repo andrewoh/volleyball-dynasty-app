@@ -391,6 +391,26 @@ body {
   gap: 0.7rem;
 }
 
+.tryout-sticky-status {
+  position: sticky;
+  top: 0.45rem;
+  z-index: 25;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.tryout-sticky-status.valid {
+  border-color: rgba(17, 122, 67, 0.5);
+  background: #e6f6ed;
+}
+
+.tryout-sticky-status.invalid {
+  border-color: rgba(163, 32, 32, 0.5);
+  background: #f9e8e8;
+}
+
 .tryout-player-card {
   border: 1px solid rgba(42, 35, 27, 0.15);
   border-radius: 12px;

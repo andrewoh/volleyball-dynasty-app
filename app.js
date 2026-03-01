@@ -669,10 +669,10 @@ function growthSkillOrderForPosition(position) {
 }
 
 function gradeSkillCurve(grade) {
-  if (grade <= 9) return -4;
-  if (grade === 10) return -1;
-  if (grade === 11) return 3;
-  return 6;
+  if (grade <= 9) return -9;
+  if (grade === 10) return -3;
+  if (grade === 11) return 4;
+  return 11;
 }
 
 function gradePhysicalCurve(grade) {
@@ -708,7 +708,7 @@ function unlocksTournament(career, tournament) {
 
 function createPlayer(draft, opts = {}) {
   const grade = clamp(opts.grade ?? randomInt(9, 12), 9, 12);
-  const gradeSkillBoost = gradeSkillCurve(grade) + randomInt(-3, 3);
+  const gradeSkillBoost = gradeSkillCurve(grade) + randomInt(-2, 2);
   const seededBaseSkill = opts.baseSkill ?? randomInt(46, 67);
   const baseSkill = clamp(seededBaseSkill + gradeSkillBoost, 35, 95);
   const position = opts.position ?? randomChoice(POSITIONS);
@@ -1565,7 +1565,6 @@ function generateTryoutPool(draft, summary = null) {
       varsityId: null,
       jvId: null
     },
-    pendingAdvancePositionId: null,
     positionLocks: makeTryoutPositionLocks(false),
     activePositionId: TRYOUT_POSITION_RULES[0].id,
     summary: {
@@ -1612,7 +1611,6 @@ function applyTryoutAutofill(draft, mode) {
   draft.tryouts.assignments = assignments;
   draft.tryouts.positionLocks = makeTryoutPositionLocks(true);
   draft.tryouts.activePositionId = TRYOUT_POSITION_RULES[TRYOUT_POSITION_RULES.length - 1].id;
-  draft.tryouts.pendingAdvancePositionId = null;
 
   const rankedVarsity = draft.tryouts.candidates
     .filter((player) => assignments[player.id] === "varsity")
@@ -3587,6 +3585,24 @@ function normalizeLoadedState(loaded) {
   ensureDefaultLineups(normalized);
   if (normalized.tryouts?.candidates) {
     normalized.tryouts.candidates = normalized.tryouts.candidates.map(migrateLegacyPlayer);
+    const gradeTargets = [9, 10, 11, 12];
+    const repurposed = new Set();
+    for (const targetGrade of gradeTargets) {
+      if (normalized.tryouts.candidates.some((player) => player.grade === targetGrade)) continue;
+      const replacement = [...normalized.tryouts.candidates]
+        .sort((a, b) => Math.abs(a.grade - targetGrade) - Math.abs(b.grade - targetGrade))
+        .find((player) => !repurposed.has(player.id));
+      if (!replacement) continue;
+      const previousGrade = replacement.grade;
+      replacement.grade = targetGrade;
+      const gradeDelta = gradeSkillCurve(targetGrade) - gradeSkillCurve(previousGrade);
+      if (gradeDelta !== 0) {
+        for (const skill of SKILLS) {
+          replacement[skill] = clamp(replacement[skill] + Math.round(gradeDelta * 0.55) + randomInt(-1, 1), 30, 99);
+        }
+      }
+      repurposed.add(replacement.id);
+    }
     normalized.tryouts.positionLocks = normalized.tryouts.positionLocks || makeTryoutPositionLocks(false);
     for (const rule of TRYOUT_POSITION_RULES) {
       if (normalized.tryouts.positionLocks[rule.id] == null) normalized.tryouts.positionLocks[rule.id] = false;
@@ -3599,7 +3615,6 @@ function normalizeLoadedState(loaded) {
       varsityId: null,
       jvId: null
     };
-    normalized.tryouts.pendingAdvancePositionId = normalized.tryouts.pendingAdvancePositionId || null;
     if (
       normalized.tryouts.captainSelections.varsityId &&
       normalized.tryouts.assignments?.[normalized.tryouts.captainSelections.varsityId] !== "varsity"
@@ -3911,9 +3926,6 @@ function handleClick(event) {
         if (!draft.tryouts) return;
         if (!findTryoutPositionRule(positionId)) return;
         draft.tryouts.activePositionId = positionId;
-        if (draft.tryouts.pendingAdvancePositionId && draft.tryouts.pendingAdvancePositionId !== positionId) {
-          draft.tryouts.pendingAdvancePositionId = null;
-        }
       },
       "tryout-position"
     );
@@ -3929,7 +3941,6 @@ function handleClick(event) {
         const currentlyLocked = Boolean(draft.tryouts.positionLocks?.[activePosition]);
         if (currentlyLocked) {
           draft.tryouts.positionLocks[activePosition] = false;
-          draft.tryouts.pendingAdvancePositionId = null;
           draft.notices = [{ id: Date.now(), tone: "neutral", message: `${positionLabel(activePosition)} unlocked for edits.` }];
           return;
         }
@@ -3938,43 +3949,7 @@ function handleClick(event) {
           draft.notices = [{ id: Date.now(), tone: "bad", message: validation.message }];
           return;
         }
-        draft.tryouts.pendingAdvancePositionId = activePosition;
-        draft.notices = [{ id: Date.now(), tone: "neutral", message: `Review ${positionLabel(activePosition)} and confirm to advance.` }];
-      },
-      "tryout-lock-position"
-    );
-    return;
-  }
-
-  if (action === "tryout-cancel-advance") {
-    mutate(
-      (draft) => {
-        if (!draft.tryouts) return;
-        draft.tryouts.pendingAdvancePositionId = null;
-      },
-      "tryout-cancel-advance"
-    );
-    return;
-  }
-
-  if (action === "tryout-confirm-advance") {
-    mutate(
-      (draft) => {
-        if (!draft.tryouts) return;
-        draft.tryouts.positionLocks = draft.tryouts.positionLocks || makeTryoutPositionLocks(false);
-        const activePosition = draft.tryouts.activePositionId || firstTryoutPositionId(draft.tryouts);
-        if (draft.tryouts.pendingAdvancePositionId !== activePosition) {
-          draft.notices = [{ id: Date.now(), tone: "bad", message: "Click lock first, then confirm to advance." }];
-          return;
-        }
-        const validation = validateTryoutPositionLocked(draft.tryouts, activePosition);
-        if (!validation.ok) {
-          draft.notices = [{ id: Date.now(), tone: "bad", message: validation.message }];
-          draft.tryouts.pendingAdvancePositionId = null;
-          return;
-        }
         draft.tryouts.positionLocks[activePosition] = true;
-        draft.tryouts.pendingAdvancePositionId = null;
         const next = TRYOUT_POSITION_RULES.find((rule) => !draft.tryouts.positionLocks[rule.id]);
         if (next) draft.tryouts.activePositionId = next.id;
         draft.notices = [
@@ -3982,12 +3957,12 @@ function handleClick(event) {
             id: Date.now(),
             tone: "good",
             message: next
-              ? `${positionLabel(activePosition)} confirmed. Next up: ${next.label}.`
+              ? `${positionLabel(activePosition)} locked. Next up: ${next.label}.`
               : "All position groups locked. Select captains and finalize tryouts."
           }
         ];
       },
-      "tryout-confirm-advance"
+      "tryout-lock-position"
     );
     return;
   }
@@ -4012,15 +3987,7 @@ function handleClick(event) {
         }
         const rule = findTryoutPositionRule(activePosition);
         const currentAssignment = draft.tryouts.assignments[playerId] || "cut";
-        const counts = getTryoutPositionCounts(draft.tryouts, activePosition);
-        if (value === "varsity" && currentAssignment !== "varsity" && counts.varsity >= (rule?.varsity || 0)) {
-          draft.notices = [{ id: Date.now(), tone: "bad", message: `${rule?.label || activePosition} Varsity quota is full.` }];
-          return;
-        }
-        if (value === "jv" && currentAssignment !== "jv" && counts.jv >= (rule?.jv || 0)) {
-          draft.notices = [{ id: Date.now(), tone: "bad", message: `${rule?.label || activePosition} JV quota is full.` }];
-          return;
-        }
+        if (!rule) return;
         draft.tryouts.assignments[playerId] = value;
         if (draft.tryouts.captainSelections?.varsityId === playerId && value !== "varsity") {
           draft.tryouts.captainSelections.varsityId = null;
@@ -4028,7 +3995,6 @@ function handleClick(event) {
         if (draft.tryouts.captainSelections?.jvId === playerId && value !== "jv") {
           draft.tryouts.captainSelections.jvId = null;
         }
-        draft.tryouts.pendingAdvancePositionId = null;
       },
       `set-assignment-${value}`
     );
@@ -4871,7 +4837,6 @@ function renderTryouts() {
   }
   const tryouts = state.tryouts;
   const candidates = tryouts.candidates || [];
-  const counts = recalcRosterAssignmentsCounts(tryouts);
   const locks = tryouts.positionLocks || makeTryoutPositionLocks(false);
   const activePositionId =
     tryouts.activePositionId && findTryoutPositionRule(tryouts.activePositionId)
@@ -4881,22 +4846,14 @@ function renderTryouts() {
   const activeLocked = Boolean(locks[activePositionId]);
   const allLocked = allTryoutPositionsLocked(tryouts);
   const activeCounts = getTryoutPositionCounts(tryouts, activePositionId);
-  const pendingConfirmAdvance = tryouts.pendingAdvancePositionId === activePositionId;
-  const readyForAdvance =
-    activeCounts.varsity === activeRule.varsity &&
-    activeCounts.jv === activeRule.jv &&
-    activeCounts.cut >= activeRule.cuts;
+  const isVarsityValid = activeCounts.varsity === activeRule.varsity;
+  const isJvValid = activeCounts.jv === activeRule.jv;
+  const isCutValid = activeCounts.cut >= activeRule.cuts;
+  const readyForAdvance = isVarsityValid && isJvValid && isCutValid;
   const prioritizedSkills = tryoutSkillPriorityForPosition(activePositionId);
   const primaryFocusSkills = prioritizedSkills.slice(0, 4);
   const orderedSkillKeys = [...prioritizedSkills, ...SKILLS.filter((skill) => !prioritizedSkills.includes(skill))];
   const activeStep = Math.max(1, TRYOUT_POSITION_RULES.findIndex((rule) => rule.id === activePositionId) + 1);
-  const focusDescriptions = {
-    LIB: "Prioritize serve receive floor control and defensive consistency.",
-    OH: "Prioritize terminal offense with stable passing in transition.",
-    MB: "Prioritize blocking range, quick attacks, and first-step movement.",
-    S: "Prioritize decision quality, distribution, and offense orchestration.",
-    RS: "Prioritize right-side scoring, block pressure, and point-finishing."
-  };
   const activePlayers = candidates
     .filter((player) => player.position === activePositionId)
     .sort((a, b) => positionFitScore(b, activePositionId) - positionFitScore(a, activePositionId) || playerOverall(b) - playerOverall(a));
@@ -4910,169 +4867,120 @@ function renderTryouts() {
   return `
     <div class="stack">
       <div class="card">
-        <h2>Tryouts</h2>
-        <p class="subtle">Assign one position group at a time, then confirm to advance to the next position. Every position has 3 mandatory cuts.</p>
-        <div class="grid-three" style="margin-top:0.7rem;">
-          <div class="kpi"><strong>${tryouts.summary.returning}</strong><span>Returning Tryouts</span></div>
-          <div class="kpi"><strong>${tryouts.summary.transfers}</strong><span>Transfers</span></div>
-          <div class="kpi"><strong>${tryouts.summary.noShows}</strong><span>No-Shows</span></div>
-          <div class="kpi"><strong>${tryouts.summary.recruits || 0}</strong><span>Signed Recruits</span></div>
+        <h2>${activeRule.label} Tryouts</h2>
+        <p class="subtle">${activeRule.label} Tryouts: Select ${activeRule.varsity} for Varsity, ${activeRule.jv} for JV, and at least ${activeRule.cuts} to cut.</p>
+        <p class="footnote" style="margin-top:0.45rem;">${SKILLS.map((skill) => `${skillShortLabel(skill)} = ${skillLongLabel(skill)}`).join(" · ")}</p>
+        <p class="footnote">Priority skills: ${primaryFocusSkills.map((skill) => skillLongLabel(skill)).join(", ")}.</p>
+      </div>
+
+      <div class="card tryout-sticky-status ${readyForAdvance ? "valid" : "invalid"}">
+        <span class="tag ${isVarsityValid ? "good" : "bad"}">Varsity ${activeCounts.varsity}/${activeRule.varsity}</span>
+        <span class="tag ${isJvValid ? "good" : "bad"}">JV ${activeCounts.jv}/${activeRule.jv}</span>
+        <span class="tag ${isCutValid ? "good" : "bad"}">Cuts ${activeCounts.cut}/${activeRule.cuts}+</span>
+        <span class="tag">Step ${activeStep}/${TRYOUT_POSITION_RULES.length}</span>
+      </div>
+
+      <div class="tryout-player-list">
+        ${activePlayers
+          .map((player) => {
+            const estimated = estimatePotential(player, state.career.upgrades.potentialVision);
+            const assignment = tryouts.assignments[player.id] || "cut";
+            const fitScore = positionFitScore(player, activePositionId);
+            const assignmentLabel = assignment === "varsity" ? "Varsity" : assignment === "jv" ? "JV" : "Cut";
+            const assignmentClass = assignment === "varsity" ? "good" : assignment === "jv" ? "" : "bad";
+            return `
+              <article class="tryout-player-card assignment-${assignment}">
+                <div class="line" style="align-items:flex-start; gap:0.45rem;">
+                  <div>
+                    ${renderPlayerIdentity(player, true)}
+                    <div class="footnote" style="margin-top:0.2rem;">${gradeLabel(player.grade)} · ${positionLabel(player.position)}</div>
+                  </div>
+                  <span class="tag ${assignmentClass}">${assignmentLabel}</span>
+                </div>
+                <div class="tryout-player-metrics">
+                  <span class="tag">OVR ${playerOverall(player)}</span>
+                  <span class="tag">Pot ${estimated}</span>
+                  <span class="tag">Fit ${fitScore}</span>
+                  <span class="tag">Prev ${previousTeamLabel(player)}</span>
+                </div>
+                <div class="tryout-physical-grid">
+                  <div><strong>Ht</strong><span>${formatHeight(player.heightInches)}</span></div>
+                  <div><strong>Reach</strong><span>${formatHeight(player.standingReach)}</span></div>
+                  <div><strong>BT</strong><span>${formatHeight(player.blockTouch)}</span></div>
+                  <div><strong>AT</strong><span>${formatHeight(player.approachTouch)}</span></div>
+                </div>
+                <div class="tryout-skill-grid">
+                  ${orderedSkillKeys
+                    .map((skill) => {
+                      const priorityClass = primaryFocusSkills.includes(skill) ? "priority" : "";
+                      return `<div class="${priorityClass}"><span>${skillLongLabel(skill)} <em>(${skillShortLabel(skill)})</em></span><strong>${player[skill]}</strong></div>`;
+                    })
+                    .join("")}
+                </div>
+                <div class="tryout-assignment-row">
+                  <button class="btn ${(assignment === "varsity") ? "btn-primary" : "btn-secondary"}" data-action="set-assignment" data-player-id="${player.id}" data-value="varsity" ${(assignment === "varsity" || activeLocked) ? "disabled" : ""}>Varsity</button>
+                  <button class="btn ${(assignment === "jv") ? "btn-accent" : "btn-secondary"}" data-action="set-assignment" data-player-id="${player.id}" data-value="jv" ${(assignment === "jv" || activeLocked) ? "disabled" : ""}>JV</button>
+                  <button class="btn ${(assignment === "cut") ? "btn-danger" : "btn-secondary"}" data-action="set-assignment" data-player-id="${player.id}" data-value="cut" ${(assignment === "cut" || activeLocked) ? "disabled" : ""}>Cut</button>
+                </div>
+              </article>
+            `;
+          })
+          .join("")}
+      </div>
+
+      <div class="card">
+        <div class="line" style="justify-content:space-between; flex-wrap:wrap;">
+          ${
+            activeLocked
+              ? `<button class="btn btn-secondary" data-action="tryout-lock-position">Unlock ${activeRule.label}</button>`
+              : readyForAdvance
+              ? `<button class="btn btn-primary" data-action="tryout-lock-position">Lock ${activeRule.label} and Advance</button>`
+              : `<span class="footnote">Complete Varsity, JV, and Cut targets to unlock advance.</span>`
+          }
+          <button class="btn btn-primary" data-action="finalize-tryouts" ${allLocked ? "" : "disabled"}>Lock Rosters</button>
         </div>
-        <p class="footnote" style="margin-top:0.45rem;">
+      </div>
+
+      ${allLocked ? `
+        <div class="card">
+          <h3>Select Captains</h3>
+          <div class="grid-two" style="margin-top:0.5rem;">
+            <label>
+              Varsity Captain
+              <select class="select" data-action="tryout-captain-varsity">
+                <option value="">Select Varsity captain</option>
+                ${varsityCandidates
+                  .map(
+                    (player) =>
+                      `<option value="${player.id}" ${tryouts.captainSelections?.varsityId === player.id ? "selected" : ""}>${player.name} (OVR ${playerOverall(player)}, LDR ${player.leadership})</option>`
+                  )
+                  .join("")}
+              </select>
+            </label>
+            <label>
+              JV Captain
+              <select class="select" data-action="tryout-captain-jv">
+                <option value="">Select JV captain</option>
+                ${jvCandidates
+                  .map(
+                    (player) =>
+                      `<option value="${player.id}" ${tryouts.captainSelections?.jvId === player.id ? "selected" : ""}>${player.name} (OVR ${playerOverall(player)}, LDR ${player.leadership})</option>`
+                  )
+                  .join("")}
+              </select>
+            </label>
+          </div>
+        </div>
+      ` : ""}
+
+      <div class="card">
+        <p class="footnote">
           New Walk-ons by Grade:
           Fr ${tryouts.summary.freshmen || 0},
           So ${tryouts.summary.sophomores || 0},
           Jr ${tryouts.summary.juniors || 0},
           Sr ${tryouts.summary.seniors || 0}
         </p>
-        <div class="line" style="margin-top:0.8rem; flex-wrap:wrap; align-items:flex-start;">
-          <div>
-            <span class="tag">Varsity ${counts.varsity}/12</span>
-            <span class="tag">JV ${counts.jv}/12</span>
-            <span class="tag">Cuts ${counts.cut}</span>
-            <span class="tag">${allLocked ? "All Position Groups Locked" : "Position Groups In Progress"}</span>
-            <span class="tag">Step ${activeStep}/${TRYOUT_POSITION_RULES.length}</span>
-          </div>
-          <div>
-            <button class="btn btn-secondary" data-action="tryout-autofill" data-mode="skill">Auto by Skill</button>
-            <button class="btn btn-secondary" data-action="tryout-autofill" data-mode="potential">Auto by Potential</button>
-          </div>
-        </div>
-        <div class="tryout-position-nav" style="margin-top:0.75rem;">
-          ${TRYOUT_POSITION_RULES.map((rule) => {
-            const ruleCounts = getTryoutPositionCounts(tryouts, rule.id);
-            const done = Boolean(locks[rule.id]);
-            const active = rule.id === activePositionId;
-            return `
-              <button class="btn ${active ? "btn-accent" : "btn-secondary"} tryout-position-pill ${done ? "done" : ""}" data-action="tryout-position" data-position-id="${rule.id}">
-                ${rule.label} ${done ? "✓" : ""}
-                <span class="footnote">${ruleCounts.varsity}/${rule.varsity} V · ${ruleCounts.jv}/${rule.jv} JV · ${ruleCounts.cut}/${rule.cuts} Cut</span>
-              </button>
-            `;
-          }).join("")}
-        </div>
-        <div class="line" style="margin-top:0.7rem; justify-content:flex-start; flex-wrap:wrap;">
-          <span class="tag">Active: ${activeRule.label}</span>
-          <span class="tag">Varsity ${activeCounts.varsity}/${activeRule.varsity}</span>
-          <span class="tag">JV ${activeCounts.jv}/${activeRule.jv}</span>
-          <span class="tag">Cuts ${activeCounts.cut}/${activeRule.cuts}</span>
-          <button class="btn ${activeLocked ? "btn-secondary" : "btn-primary"}" data-action="tryout-lock-position" ${activeLocked ? "" : readyForAdvance ? "" : "disabled"}>
-            ${activeLocked ? `Unlock ${activeRule.label}` : `Review ${activeRule.label}`}
-          </button>
-        </div>
-        ${
-          pendingConfirmAdvance
-            ? `
-              <div class="callout" style="margin-top:0.6rem;">
-                <strong>Confirm ${activeRule.label} selections?</strong>
-                <p class="subtle">This will lock the current position and move you to the next one.</p>
-                <div class="line" style="justify-content:flex-start; gap:0.45rem; flex-wrap:wrap;">
-                  <button class="btn btn-primary" data-action="tryout-confirm-advance">Confirm and Next</button>
-                  <button class="btn btn-secondary" data-action="tryout-cancel-advance">Keep Editing</button>
-                </div>
-              </div>
-            `
-            : ""
-        }
-        <p class="footnote" style="margin-top:0.55rem;">${focusDescriptions[activePositionId] || "Prioritize role fit for this position group."}</p>
-        <div class="tryout-skill-legend" style="margin-top:0.3rem;">
-          ${SKILLS.map((skill) => `<span class="tag">${skillShortLabel(skill)} = ${skillLongLabel(skill)}</span>`).join("")}
-        </div>
-        <div class="grid-two" style="margin-top:0.8rem;">
-          <label>
-            Varsity Captain
-            <select class="select" data-action="tryout-captain-varsity">
-              <option value="">Select Varsity captain</option>
-              ${varsityCandidates
-                .map(
-                  (player) =>
-                    `<option value="${player.id}" ${tryouts.captainSelections?.varsityId === player.id ? "selected" : ""}>${player.name} (OVR ${playerOverall(player)}, LDR ${player.leadership})</option>`
-                )
-                .join("")}
-            </select>
-          </label>
-          <label>
-            JV Captain
-            <select class="select" data-action="tryout-captain-jv">
-              <option value="">Select JV captain</option>
-              ${jvCandidates
-                .map(
-                  (player) =>
-                    `<option value="${player.id}" ${tryouts.captainSelections?.jvId === player.id ? "selected" : ""}>${player.name} (OVR ${playerOverall(player)}, LDR ${player.leadership})</option>`
-                )
-                .join("")}
-            </select>
-          </label>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="line" style="margin-bottom:0.6rem; gap:0.45rem; align-items:flex-start;">
-          <div>
-            <h3 style="margin:0;">${activeRule.label} Candidates</h3>
-            <p class="subtle" style="margin:0.2rem 0 0;">Set assignments for this role only. Cards show all skills; highlighted skills are highest priority for ${activeRule.label}.</p>
-          </div>
-          <div style="display:flex; flex-wrap:wrap; gap:0.28rem;">
-            ${primaryFocusSkills.map((skill) => `<span class="tag good">${skillLongLabel(skill)}</span>`).join("")}
-          </div>
-        </div>
-        <div class="tryout-player-list">
-          ${activePlayers
-            .map((player) => {
-              const estimated = estimatePotential(player, state.career.upgrades.potentialVision);
-              const assignment = tryouts.assignments[player.id] || "cut";
-              const fitScore = positionFitScore(player, activePositionId);
-              const varsityDisabled =
-                activeLocked ||
-                (assignment !== "varsity" && activeCounts.varsity >= activeRule.varsity);
-              const jvDisabled =
-                activeLocked ||
-                (assignment !== "jv" && activeCounts.jv >= activeRule.jv);
-              const assignmentLabel = assignment === "varsity" ? "Varsity" : assignment === "jv" ? "JV" : "Cut";
-              const assignmentClass = assignment === "varsity" ? "good" : assignment === "jv" ? "" : "bad";
-              return `
-                <article class="tryout-player-card assignment-${assignment}">
-                  <div class="line" style="align-items:flex-start; gap:0.45rem;">
-                    <div>
-                      ${renderPlayerIdentity(player, true)}
-                      <div class="footnote" style="margin-top:0.2rem;">${gradeLabel(player.grade)} · ${positionLabel(player.position)}</div>
-                    </div>
-                    <span class="tag ${assignmentClass}">${assignmentLabel}</span>
-                  </div>
-                  <div class="tryout-player-metrics">
-                    <span class="tag">OVR ${playerOverall(player)}</span>
-                    <span class="tag">Pot ${estimated}</span>
-                    <span class="tag">Fit ${fitScore}</span>
-                    <span class="tag">Prev ${previousTeamLabel(player)}</span>
-                  </div>
-                  <div class="tryout-physical-grid">
-                    <div><strong>Ht</strong><span>${formatHeight(player.heightInches)}</span></div>
-                    <div><strong>Reach</strong><span>${formatHeight(player.standingReach)}</span></div>
-                    <div><strong>BT</strong><span>${formatHeight(player.blockTouch)}</span></div>
-                    <div><strong>AT</strong><span>${formatHeight(player.approachTouch)}</span></div>
-                  </div>
-                  <div class="tryout-skill-grid">
-                    ${orderedSkillKeys
-                      .map((skill) => {
-                        const priorityClass = primaryFocusSkills.includes(skill) ? "priority" : "";
-                        return `<div class="${priorityClass}"><span>${skillLongLabel(skill)} <em>(${skillShortLabel(skill)})</em></span><strong>${player[skill]}</strong></div>`;
-                      })
-                      .join("")}
-                  </div>
-                  <div class="tryout-assignment-row">
-                    <button class="btn ${(assignment === "varsity") ? "btn-primary" : "btn-secondary"}" data-action="set-assignment" data-player-id="${player.id}" data-value="varsity" ${(assignment === "varsity" || varsityDisabled) ? "disabled" : ""}>Varsity</button>
-                    <button class="btn ${(assignment === "jv") ? "btn-accent" : "btn-secondary"}" data-action="set-assignment" data-player-id="${player.id}" data-value="jv" ${(assignment === "jv" || jvDisabled) ? "disabled" : ""}>JV</button>
-                    <button class="btn ${(assignment === "cut") ? "btn-danger" : "btn-secondary"}" data-action="set-assignment" data-player-id="${player.id}" data-value="cut" ${(assignment === "cut" || activeLocked) ? "disabled" : ""}>Cut</button>
-                  </div>
-                </article>
-              `;
-            })
-            .join("")}
-        </div>
-      </div>
-
-      <div class="card">
-        <button class="btn btn-primary" data-action="finalize-tryouts" ${allLocked ? "" : "disabled"}>Lock Rosters</button>
       </div>
     </div>
   `;
