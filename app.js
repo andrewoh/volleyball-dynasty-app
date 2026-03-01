@@ -221,7 +221,59 @@ const MASCOTS = [
   "Comets"
 ];
 const POSITIONS = ["OH", "MB", "S", "RS", "LIB"];
-const SKILLS = ["serving", "passing", "setting", "hitting", "blocking", "awareness", "resilience", "leadership"];
+const SKILLS = ["serving", "passing", "setting", "hitting", "blocking", "athleticism", "awareness", "resilience", "leadership"];
+const SKILL_SHORT_LABELS = {
+  serving: "SRV",
+  passing: "PAS",
+  setting: "SET",
+  hitting: "HIT",
+  blocking: "BLK",
+  athleticism: "ATH",
+  awareness: "AWR",
+  resilience: "RES",
+  leadership: "LDR"
+};
+const POSITION_TRYOUT_SKILL_PRIORITY = {
+  LIB: ["passing", "awareness", "resilience", "athleticism", "serving", "leadership"],
+  OH: ["hitting", "athleticism", "passing", "serving", "awareness", "resilience"],
+  MB: ["blocking", "hitting", "athleticism", "awareness", "resilience", "serving"],
+  S: ["setting", "awareness", "athleticism", "serving", "leadership", "passing"],
+  RS: ["hitting", "blocking", "athleticism", "serving", "awareness", "resilience"]
+};
+const POSITION_SKILL_ARCHETYPES = {
+  LIB: {
+    bias: { serving: -1, passing: 14, setting: 1, hitting: -17, blocking: -19, athleticism: 8, awareness: 12, resilience: 10, leadership: 6 },
+    floor: { passing: 45, awareness: 42, resilience: 40, athleticism: 40, serving: 36, setting: 34, hitting: 30, blocking: 30, leadership: 36 },
+    cap: { passing: 99, awareness: 99, resilience: 99, athleticism: 97, serving: 90, setting: 86, hitting: 64, blocking: 62, leadership: 98 }
+  },
+  OH: {
+    bias: { serving: 4, passing: 4, setting: -4, hitting: 10, blocking: 2, athleticism: 9, awareness: 4, resilience: 3, leadership: 2 },
+    floor: { hitting: 40, athleticism: 42, passing: 38, serving: 38, awareness: 36, resilience: 36, blocking: 34, setting: 30, leadership: 34 },
+    cap: { hitting: 99, athleticism: 99, passing: 95, serving: 96, awareness: 96, resilience: 96, blocking: 95, setting: 89, leadership: 95 }
+  },
+  MB: {
+    bias: { serving: -3, passing: -10, setting: -12, hitting: 9, blocking: 15, athleticism: 7, awareness: 3, resilience: 3, leadership: 1 },
+    floor: { blocking: 44, hitting: 40, athleticism: 40, awareness: 34, resilience: 34, serving: 32, passing: 30, setting: 30, leadership: 34 },
+    cap: { blocking: 99, hitting: 98, athleticism: 98, awareness: 92, resilience: 92, serving: 90, passing: 84, setting: 80, leadership: 94 }
+  },
+  S: {
+    bias: { serving: 2, passing: 3, setting: 16, hitting: -9, blocking: -11, athleticism: 5, awareness: 11, resilience: 5, leadership: 8 },
+    floor: { setting: 45, awareness: 40, athleticism: 36, leadership: 38, serving: 35, passing: 35, resilience: 34, hitting: 30, blocking: 30 },
+    cap: { setting: 99, awareness: 98, athleticism: 95, leadership: 99, serving: 95, passing: 94, resilience: 94, hitting: 82, blocking: 78 }
+  },
+  RS: {
+    bias: { serving: 3, passing: -4, setting: -9, hitting: 12, blocking: 7, athleticism: 8, awareness: 4, resilience: 5, leadership: 2 },
+    floor: { hitting: 42, blocking: 38, athleticism: 40, serving: 36, awareness: 34, resilience: 34, passing: 30, setting: 30, leadership: 34 },
+    cap: { hitting: 99, blocking: 97, athleticism: 98, serving: 95, awareness: 95, resilience: 95, passing: 88, setting: 84, leadership: 95 }
+  }
+};
+const POSITION_PHYSICAL_ARCHETYPES = {
+  LIB: { heightRange: [-4, 1], reachRange: [18, 24], jumpRange: [10, 20], approachExtra: [1, 5] },
+  OH: { heightRange: [-2, 3], reachRange: [21, 28], jumpRange: [12, 27], approachExtra: [3, 8] },
+  MB: { heightRange: [-1, 4], reachRange: [23, 30], jumpRange: [13, 28], approachExtra: [3, 8] },
+  S: { heightRange: [-2, 2], reachRange: [20, 26], jumpRange: [11, 23], approachExtra: [2, 6] },
+  RS: { heightRange: [-1, 3], reachRange: [21, 28], jumpRange: [13, 27], approachExtra: [3, 8] }
+};
 const LINEUP_SLOT_ORDER = [3, 4, 5, 0, 1, 2];
 const TOURNAMENTS = [
   {
@@ -331,130 +383,134 @@ function makeSeededRandom(seed) {
 
 function createPixelAvatarDataUri(seed) {
   const random = makeSeededRandom(seed);
-  const skinTones = ["#F7DFC9", "#F0CCAF", "#E1B893", "#CF9E76", "#B9835D"];
-  const hairColors = ["#E7894E", "#D27439", "#B85A2A", "#5A3D31", "#25262D", "#C1AF62", "#8A5A47"];
-  const eyeColors = ["#64483A", "#2E5E8E", "#4F7351", "#5A415E", "#87672A"];
-  const jerseyBase = ["#1A2F53", "#213E6E", "#2A4C82", "#D94816", "#A32020", "#1F7A43"];
-  const trimColors = ["#FFFFFF", "#EDE9DB", "#F8E7A3", "#D8E8FF"];
-  const outline = "#4A332D";
-  const stickerWhite = "#FFFFFF";
-  const stickerBlue = "#D8EAF9";
-  const skin = skinTones[Math.floor(random() * skinTones.length)];
-  const hair = hairColors[Math.floor(random() * hairColors.length)];
-  const eye = eyeColors[Math.floor(random() * eyeColors.length)];
-  const jersey = jerseyBase[Math.floor(random() * jerseyBase.length)];
-  const jerseyTrim = trimColors[Math.floor(random() * trimColors.length)];
-  const shorts = random() < 0.6 ? "#1E2C47" : "#283756";
-  const hairStyle = Math.floor(random() * 7);
-  const eyeStyle = Math.floor(random() * 5);
-  const mood = Math.floor(random() * 5);
-  const hasGlasses = random() < 0.15;
+  const skinTones = ["#F7DFC9", "#F1CFB2", "#E5BD99", "#CF9E76", "#B8855F"];
+  const hairColors = ["#0F1014", "#2A1D1A", "#4A3228", "#6D3F2B", "#BE6C2F", "#8C8D93", "#BCA776"];
+  const eyeColors = ["#5F4336", "#2B4F7D", "#4F6E46", "#765226", "#3E3B60"];
+  const jerseyBases = ["#1D2D53", "#243F73", "#153D66", "#A32125", "#E06A1D", "#1D6C45"];
+  const jerseyTrims = ["#F5F8FC", "#EDE5D4", "#F7D670"];
+  const outline = "#3A2A24";
+  const skin = randomChoice(skinTones);
+  const hair = randomChoice(hairColors);
+  const eye = randomChoice(eyeColors);
+  const jersey = randomChoice(jerseyBases);
+  const jerseyTrim = randomChoice(jerseyTrims);
+  const bgA = random() < 0.5 ? "#F3E5D2" : "#DDEAF7";
+  const bgB = random() < 0.5 ? "#E6CFAF" : "#BFD8F3";
+  const hairStyle = Math.floor(random() * 8);
+  const expression = Math.floor(random() * 5);
+  const eyeStyle = Math.floor(random() * 4);
+  const hasGlasses = random() < 0.12;
+  const hasStripe = random() < 0.58;
   const jerseyNumber = 1 + Math.floor(random() * 20);
-  const blush = random() < 0.65;
 
-  const hairTemplates = [
-    "M20 61 L19 40 L27 28 L33 17 L43 14 L53 8 L65 11 L75 8 L86 15 L94 25 L101 37 L103 53 L101 61 Z",
-    "M21 61 L20 35 L30 23 L42 16 L54 12 L66 13 L77 17 L88 26 L98 37 L101 61 Z",
-    "M20 61 L19 43 L27 31 L34 20 L45 13 L56 13 L67 9 L78 14 L89 22 L98 33 L103 47 L102 61 Z",
-    "M22 61 L21 39 L30 24 L40 18 L52 16 L64 18 L74 15 L84 20 L94 30 L100 44 L102 61 Z",
-    "M20 61 L21 36 L29 26 L36 20 L48 14 L61 15 L71 18 L82 25 L93 36 L100 49 L102 61 Z",
-    "M22 61 L21 34 L31 22 L42 13 L54 10 L66 11 L79 18 L89 28 L98 38 L102 61 Z",
-    "M20 61 L20 41 L27 29 L35 22 L44 17 L55 13 L66 14 L76 18 L85 25 L94 35 L100 46 L102 61 Z"
+  const hairBackTemplates = [
+    "M30 54 L31 44 L39 31 L48 23 L59 19 L71 20 L81 25 L89 34 L96 45 L97 56 L94 59 L35 59 Z",
+    "M29 56 L31 40 L38 30 L47 24 L58 20 L69 19 L80 24 L89 32 L95 43 L98 56 L94 61 L35 61 Z",
+    "M30 56 L31 43 L39 31 L49 24 L61 20 L73 22 L83 28 L91 38 L96 49 L97 59 L94 62 L35 62 Z",
+    "M28 56 L30 40 L38 30 L50 22 L63 20 L75 23 L84 30 L91 41 L97 53 L97 61 L93 63 L34 63 Z",
+    "M30 55 L31 42 L39 31 L48 25 L58 22 L69 22 L80 25 L89 34 L95 45 L96 55 L94 59 L35 59 Z",
+    "M30 56 L31 39 L40 29 L51 22 L64 20 L77 24 L87 32 L94 43 L97 55 L95 60 L34 60 Z",
+    "M29 57 L31 43 L39 32 L49 25 L61 22 L73 22 L84 27 L92 35 L97 46 L97 57 L94 61 L35 61 Z",
+    "M29 56 L30 41 L38 30 L48 24 L60 20 L72 21 L82 26 L90 34 L96 45 L97 57 L94 60 L35 60 Z"
   ];
-  const hairPath = hairTemplates[hairStyle % hairTemplates.length];
+  const hairFrontTemplates = [
+    "M31 42 L38 33 L44 30 L46 21 L54 28 L60 19 L67 29 L74 21 L80 31 L88 36 L92 45 L90 56 L84 50 L78 54 L69 52 L61 55 L52 52 L43 54 L35 50 L31 56 Z",
+    "M30 44 L37 35 L45 30 L52 22 L58 27 L64 21 L71 29 L78 24 L86 31 L92 40 L93 49 L89 56 L83 53 L74 55 L66 53 L58 56 L48 54 L39 56 L33 52 Z",
+    "M30 45 L35 38 L43 33 L47 24 L56 30 L64 23 L70 31 L76 26 L85 33 L91 41 L93 50 L90 57 L81 51 L73 53 L65 50 L58 54 L49 52 L41 55 L34 51 Z",
+    "M31 43 L38 34 L45 29 L49 21 L58 27 L66 20 L72 27 L79 23 L86 30 L92 39 L93 48 L90 56 L84 52 L75 53 L66 52 L58 54 L50 52 L42 53 L34 50 Z",
+    "M30 44 L36 36 L44 31 L52 24 L59 26 L65 22 L73 29 L81 25 L88 32 L93 41 L93 49 L89 57 L81 53 L72 54 L64 53 L57 54 L48 53 L40 55 L33 51 Z",
+    "M30 45 L37 35 L45 31 L52 25 L58 20 L66 24 L73 21 L81 28 L88 35 L92 44 L92 52 L88 58 L81 53 L72 54 L64 52 L56 54 L47 52 L40 54 L33 50 Z",
+    "M31 44 L38 35 L46 30 L53 24 L61 22 L69 24 L77 29 L85 35 L91 43 L92 51 L88 57 L80 53 L72 54 L64 51 L56 54 L47 52 L40 54 L33 50 Z",
+    "M31 43 L37 34 L45 30 L53 24 L61 21 L69 22 L77 26 L85 33 L91 41 L93 49 L89 56 L82 53 L73 54 L64 53 L56 55 L47 53 L39 54 L33 50 Z"
+  ];
 
   const browMarkup =
-    mood === 1
-      ? `<path d="M38 46 L48 43" fill="none"/><path d="M60 43 L70 46" fill="none"/>`
-      : mood === 2
-      ? `<path d="M38 44 L49 45" fill="none"/><path d="M59 45 L70 44" fill="none"/>`
-      : `<path d="M38 45 L49 43.8" fill="none"/><path d="M59 43.8 L70 45" fill="none"/>`;
+    expression === 1
+      ? `<path d="M43 53 L53 50" fill="none"/><path d="M75 50 L85 53" fill="none"/>`
+      : expression === 3
+      ? `<path d="M43 50 L53 52" fill="none"/><path d="M75 52 L85 50" fill="none"/>`
+      : `<path d="M43 52 L53 51" fill="none"/><path d="M75 51 L85 52" fill="none"/>`;
 
   const eyeMarkup =
     eyeStyle === 0
       ? `
-      <ellipse cx="43" cy="53" rx="6.2" ry="5.8" fill="#fff"/>
-      <ellipse cx="65" cy="53" rx="6.2" ry="5.8" fill="#fff"/>
-      <ellipse cx="43" cy="53.8" rx="3.4" ry="3.8" fill="${eye}"/>
-      <ellipse cx="65" cy="53.8" rx="3.4" ry="3.8" fill="${eye}"/>
+        <ellipse cx="48" cy="59" rx="6.3" ry="4.7" fill="#fff"/>
+        <ellipse cx="80" cy="59" rx="6.3" ry="4.7" fill="#fff"/>
+        <ellipse cx="48" cy="59.6" rx="3.2" ry="3.2" fill="${eye}"/>
+        <ellipse cx="80" cy="59.6" rx="3.2" ry="3.2" fill="${eye}"/>
       `
       : eyeStyle === 1
       ? `
-      <ellipse cx="43" cy="53.2" rx="6.3" ry="5.2" fill="#fff"/>
-      <ellipse cx="65" cy="53.2" rx="6.3" ry="5.2" fill="#fff"/>
-      <circle cx="43" cy="54" r="3.45" fill="${eye}"/>
-      <circle cx="65" cy="54" r="3.45" fill="${eye}"/>
+        <path d="M41 59 Q48 53 55 59 Q48 64 41 59 Z" fill="#fff"/>
+        <path d="M73 59 Q80 53 87 59 Q80 64 73 59 Z" fill="#fff"/>
+        <ellipse cx="48" cy="59.5" rx="3.1" ry="2.9" fill="${eye}"/>
+        <ellipse cx="80" cy="59.5" rx="3.1" ry="2.9" fill="${eye}"/>
       `
       : eyeStyle === 2
       ? `
-      <path d="M36.5 53 Q43 47.5 49.5 53 Q43 58.5 36.5 53 Z" fill="#fff"/>
-      <path d="M58.5 53 Q65 47.5 71.5 53 Q65 58.5 58.5 53 Z" fill="#fff"/>
-      <ellipse cx="43" cy="53.5" rx="3.1" ry="3.1" fill="${eye}"/>
-      <ellipse cx="65" cy="53.5" rx="3.1" ry="3.1" fill="${eye}"/>
-      `
-      : eyeStyle === 3
-      ? `
-      <ellipse cx="43" cy="54" rx="6.1" ry="4.5" fill="#fff"/>
-      <ellipse cx="65" cy="54" rx="6.1" ry="4.5" fill="#fff"/>
-      <ellipse cx="43" cy="54.5" rx="3.4" ry="2.8" fill="${eye}"/>
-      <ellipse cx="65" cy="54.5" rx="3.4" ry="2.8" fill="${eye}"/>
+        <ellipse cx="48" cy="59.3" rx="6.1" ry="4.0" fill="#fff"/>
+        <ellipse cx="80" cy="59.3" rx="6.1" ry="4.0" fill="#fff"/>
+        <ellipse cx="48" cy="59.8" rx="3.1" ry="2.6" fill="${eye}"/>
+        <ellipse cx="80" cy="59.8" rx="3.1" ry="2.6" fill="${eye}"/>
       `
       : `
-      <path d="M37 53 L49 53" fill="none"/><path d="M59 53 L71 53" fill="none"/>
-      <ellipse cx="43" cy="53" rx="2.9" ry="2.5" fill="${eye}"/>
-      <ellipse cx="65" cy="53" rx="2.9" ry="2.5" fill="${eye}"/>
+        <path d="M42 59 L54 59" fill="none"/>
+        <path d="M74 59 L86 59" fill="none"/>
+        <ellipse cx="48" cy="59" rx="2.8" ry="2.2" fill="${eye}"/>
+        <ellipse cx="80" cy="59" rx="2.8" ry="2.2" fill="${eye}"/>
       `;
 
   const mouthMarkup =
-    mood === 0
-      ? `<path d="M46 66 Q54 72 62 66" fill="none" stroke-width="2.6"/>`
-      : mood === 1
-      ? `<ellipse cx="54" cy="67" rx="7.2" ry="4.6" fill="#8D4A44"/><ellipse cx="54" cy="65.5" rx="5.2" ry="2.2" fill="#F4B6AF" stroke="none"/>`
-      : mood === 2
-      ? `<path d="M48 66 Q54 63.5 60 66" fill="none" stroke-width="2.4"/>`
-      : mood === 3
-      ? `<path d="M49 67 L59 67" fill="none" stroke-width="2.3"/>`
-      : `<path d="M47 66 Q54 70 61 66" fill="none" stroke-width="2.4"/>`;
+    expression === 0
+      ? `<path d="M56 74 Q64 80 72 74" fill="none" stroke-width="2.2"/>`
+      : expression === 1
+      ? `<ellipse cx="64" cy="74.5" rx="7.0" ry="4.0" fill="#8D4B43"/><ellipse cx="64" cy="73.0" rx="5.0" ry="2.0" fill="#F4B7AF" stroke="none"/>`
+      : expression === 2
+      ? `<path d="M58 75 Q64 71 70 75" fill="none" stroke-width="2.1"/>`
+      : expression === 3
+      ? `<path d="M58 75 L70 75" fill="none" stroke-width="2.1"/>`
+      : `<path d="M57 74 Q64 78 71 74" fill="none" stroke-width="2.1"/>`;
 
-  const silhouette =
-    "M24 119 L26 87 Q27 78 33 73 Q30 67 30 58 Q30 39 42 27 Q48 11 64 10 Q80 11 86 27 Q98 39 98 58 Q98 67 95 73 Q101 78 102 87 L104 119 Q97 121 91 117 Q83 122 64 122 Q45 122 37 117 Q31 121 24 119 Z";
-
-  const jerseyPattern =
-    random() < 0.5
-      ? `<path d="M42 84 H66 L64 107 H44 Z" fill="${jersey}"/><path d="M54 84 V107" stroke="${jerseyTrim}" stroke-width="2.3"/>`
-      : `<path d="M41 84 H67 L65 107 H43 Z" fill="${jersey}"/><path d="M41 92 H67" stroke="${jerseyTrim}" stroke-width="2.3"/>`;
+  const jerseyPattern = hasStripe
+    ? `<path d="M64 99 V129" stroke="${jerseyTrim}" stroke-width="2.6"/><path d="M39 106 H89" stroke="${jerseyTrim}" stroke-width="2.2"/>`
+    : `<path d="M39 108 H89" stroke="${jerseyTrim}" stroke-width="2.4"/>`;
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-    <g fill="none" stroke-linejoin="round" stroke-linecap="round">
-      <path d="${silhouette}" stroke="${stickerWhite}" stroke-width="13"/>
-      <path d="${silhouette}" stroke="${stickerBlue}" stroke-width="7"/>
-    </g>
-    <g stroke="${outline}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
-      <path d="${hairPath}" fill="${hair}"/>
-      <circle cx="54" cy="52" r="29" fill="${skin}"/>
-      <ellipse cx="27.5" cy="54.5" rx="3.2" ry="4.9" fill="${skin}"/>
-      <ellipse cx="80.5" cy="54.5" rx="3.2" ry="4.9" fill="${skin}"/>
-      ${blush ? `<ellipse cx="34.5" cy="61.5" rx="3.5" ry="1.8" fill="#E8A39E" stroke="none"/><ellipse cx="73.5" cy="61.5" rx="3.5" ry="1.8" fill="#E8A39E" stroke="none"/>` : ""}
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="${bgA}"/>
+        <stop offset="100%" stop-color="${bgB}"/>
+      </linearGradient>
+      <linearGradient id="jerseyShade" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${jersey}"/>
+        <stop offset="100%" stop-color="#111829"/>
+      </linearGradient>
+    </defs>
+    <rect x="0" y="0" width="128" height="128" rx="20" fill="url(#bg)"/>
+    <g stroke="${outline}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 128 L24 101 Q30 92 42 90 L52 87 H76 L86 90 Q98 92 104 101 L110 128 Z" fill="url(#jerseyShade)"/>
+      <path d="M48 87 L57 100 H71 L80 87 Z" fill="${jerseyTrim}"/>
+      <path d="M52 88 L64 101 L76 88" fill="${jersey}" stroke-width="1.8"/>
+      ${jerseyPattern}
+      <text x="64" y="120.2" text-anchor="middle" font-family="Arial, sans-serif" font-size="11.5" font-weight="700" fill="${jerseyTrim}" stroke="none">${jerseyNumber}</text>
+      <rect x="58" y="80" width="12" height="9" rx="3.8" fill="${skin}"/>
+      <path d="${hairBackTemplates[hairStyle]}" fill="${hair}"/>
+      <ellipse cx="40.8" cy="59.5" rx="3.3" ry="5.0" fill="${skin}"/>
+      <ellipse cx="87.2" cy="59.5" rx="3.3" ry="5.0" fill="${skin}"/>
+      <ellipse cx="64" cy="56" rx="24.5" ry="27.5" fill="${skin}"/>
+      <path d="${hairFrontTemplates[hairStyle]}" fill="${hair}"/>
       ${browMarkup}
       ${eyeMarkup}
-      <circle cx="44.4" cy="51.2" r="1.1" fill="#fff" stroke="none"/>
-      <circle cx="66.4" cy="51.2" r="1.1" fill="#fff" stroke="none"/>
-      <ellipse cx="54" cy="59.2" rx="1.35" ry="1.0" fill="#DEAE8D" stroke="none"/>
+      <circle cx="49.2" cy="57.8" r="1.0" fill="#fff" stroke="none"/>
+      <circle cx="81.2" cy="57.8" r="1.0" fill="#fff" stroke="none"/>
+      <ellipse cx="64" cy="66.5" rx="1.3" ry="1.0" fill="#D59E7C" stroke="none"/>
       ${mouthMarkup}
-      ${hasGlasses ? `<rect x="35.8" y="47.4" width="14.4" height="11.4" rx="2.2" fill="none"/><rect x="57.8" y="47.4" width="14.4" height="11.4" rx="2.2" fill="none"/><line x1="50.4" y1="52.8" x2="57.8" y2="52.8"/>` : ""}
-      <path d="M39 79 Q54 87 69 79 L72 109 Q54 114 36 109 Z" fill="${jersey}"/>
-      ${jerseyPattern}
-      <text x="54" y="100.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="10.2" font-weight="700" fill="${jerseyTrim}" stroke="none">${jerseyNumber}</text>
-      <path d="M37 86 L28 95 L32 99 L41 90 Z" fill="${jersey}"/>
-      <path d="M71 86 L80 95 L76 99 L67 90 Z" fill="${jersey}"/>
-      <ellipse cx="30.2" cy="98.2" rx="3.3" ry="2.6" fill="${skin}"/>
-      <ellipse cx="77.8" cy="98.2" rx="3.3" ry="2.6" fill="${skin}"/>
-      <path d="M45 108 H63 L61 122 H47 Z" fill="${shorts}"/>
-      <path d="M45 122 L38 122 L39 111 L45 111 Z" fill="${skin}"/>
-      <path d="M63 122 L70 122 L69 111 L63 111 Z" fill="${skin}"/>
-      <path d="M39 121 H45" fill="none"/><path d="M63 121 H69" fill="none"/>
-      <ellipse cx="41.6" cy="123.2" rx="4.3" ry="1.25" fill="#282632" stroke="none"/>
-      <ellipse cx="66.4" cy="123.2" rx="4.3" ry="1.25" fill="#282632" stroke="none"/>
+      ${
+        hasGlasses
+          ? `<rect x="41.8" y="53.2" width="13.0" height="10.2" rx="2.0" fill="none"/><rect x="73.2" y="53.2" width="13.0" height="10.2" rx="2.0" fill="none"/><line x1="54.8" y1="58.2" x2="73.2" y2="58.2"/>`
+          : ""
+      }
+      <path d="M18 128 L24 101 Q30 92 42 90 L52 87 H76 L86 90 Q98 92 104 101 L110 128" fill="none"/>
     </g>
   </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
@@ -569,6 +625,34 @@ function positionHeightBaseline(position) {
   return 69;
 }
 
+function skillShortLabel(skill) {
+  return SKILL_SHORT_LABELS[skill] || skill.toUpperCase();
+}
+
+function tryoutSkillPriorityForPosition(position) {
+  return POSITION_TRYOUT_SKILL_PRIORITY[position] || POSITION_TRYOUT_SKILL_PRIORITY.OH;
+}
+
+function positionSkillArchetype(position) {
+  return POSITION_SKILL_ARCHETYPES[position] || POSITION_SKILL_ARCHETYPES.OH;
+}
+
+function positionPhysicalArchetype(position) {
+  return POSITION_PHYSICAL_ARCHETYPES[position] || POSITION_PHYSICAL_ARCHETYPES.OH;
+}
+
+function positionFitScore(player, position) {
+  const focusSkills = tryoutSkillPriorityForPosition(position).slice(0, 4);
+  const average = focusSkills.reduce((sum, skill) => sum + (player[skill] || 0), 0) / Math.max(1, focusSkills.length);
+  return Math.round(average);
+}
+
+function growthSkillOrderForPosition(position) {
+  const primary = tryoutSkillPriorityForPosition(position).slice(0, 4);
+  const secondary = SKILLS.filter((skill) => !primary.includes(skill));
+  return [...shuffle(primary), ...shuffle(primary), ...shuffle(secondary)];
+}
+
 function physicalPotentialContribution(player) {
   const heightScore = (player.heightInches - 68) * 1.5;
   const reachScore = (player.standingReach - 92) * 0.7;
@@ -594,16 +678,40 @@ function unlocksTournament(career, tournament) {
 }
 
 function createPlayer(draft, opts = {}) {
-  const baseSkill = opts.baseSkill ?? randomInt(46, 67);
-  const variation = () => randomInt(-7, 8);
+  const baseSkill = clamp(opts.baseSkill ?? randomInt(46, 67), 35, 95);
   const position = opts.position ?? randomChoice(POSITIONS);
+  const archetype = positionSkillArchetype(position);
+  const physical = positionPhysicalArchetype(position);
   const heightBase = positionHeightBaseline(position);
-  const heightInches = clamp(opts.heightInches ?? heightBase + randomInt(-3, 3), 64, 82);
-  const standingReach = clamp(opts.standingReach ?? heightInches + randomInt(20, 27), 86, 112);
-  const verticalSeed = Math.round((baseSkill - 45) * 0.45 + randomInt(12, 26));
+  const heightInches = clamp(
+    opts.heightInches ?? heightBase + randomInt(physical.heightRange[0], physical.heightRange[1]),
+    64,
+    82
+  );
+  const standingReach = clamp(
+    opts.standingReach ?? heightInches + randomInt(physical.reachRange[0], physical.reachRange[1]),
+    86,
+    112
+  );
+  const verticalSeed = Math.round((baseSkill - 45) * 0.42 + randomInt(physical.jumpRange[0], physical.jumpRange[1]));
   const blockTouch = clamp(opts.blockTouch ?? standingReach + verticalSeed + randomInt(-2, 2), 96, 132);
-  const approachTouch = clamp(opts.approachTouch ?? blockTouch + randomInt(2, 8), 99, 138);
+  const approachTouch = clamp(
+    opts.approachTouch ?? blockTouch + randomInt(physical.approachExtra[0], physical.approachExtra[1]),
+    99,
+    138
+  );
   const morale = clamp(opts.morale ?? randomInt(60, 82), 30, 99);
+  const skillValue = (skill) => {
+    const floor = archetype.floor?.[skill] ?? 35;
+    const cap = archetype.cap?.[skill] ?? 95;
+    if (opts[skill] != null) return clamp(opts[skill], floor, cap);
+    const bias = archetype.bias?.[skill] ?? 0;
+    const raw =
+      skill === "leadership"
+        ? Math.round(morale * 0.88) + bias + randomInt(-4, 5)
+        : baseSkill + bias + randomInt(-6, 6);
+    return clamp(raw, floor, cap);
+  };
   const player = {
     id: nextPlayerId(draft),
     name: opts.name ?? createRandomName(),
@@ -615,14 +723,15 @@ function createPlayer(draft, opts = {}) {
     standingReach,
     blockTouch,
     approachTouch,
-    serving: clamp(opts.serving ?? baseSkill + variation(), 35, 95),
-    passing: clamp(opts.passing ?? baseSkill + variation(), 35, 95),
-    setting: clamp(opts.setting ?? baseSkill + variation(), 35, 95),
-    hitting: clamp(opts.hitting ?? baseSkill + variation(), 35, 95),
-    blocking: clamp(opts.blocking ?? baseSkill + variation(), 35, 95),
-    awareness: clamp(opts.awareness ?? baseSkill + variation(), 35, 95),
-    resilience: clamp(opts.resilience ?? baseSkill + variation(), 35, 95),
-    leadership: clamp(opts.leadership ?? Math.round(morale * 0.9) + randomInt(-4, 5), 35, 95),
+    serving: skillValue("serving"),
+    passing: skillValue("passing"),
+    setting: skillValue("setting"),
+    hitting: skillValue("hitting"),
+    blocking: skillValue("blocking"),
+    athleticism: skillValue("athleticism"),
+    awareness: skillValue("awareness"),
+    resilience: skillValue("resilience"),
+    leadership: skillValue("leadership"),
     potential: 0,
     xp: opts.xp ?? 0,
     morale,
@@ -637,7 +746,13 @@ function createPlayer(draft, opts = {}) {
   };
   player.potential = clamp(
     opts.potential ??
-      Math.round(playerOverall(player) + 10 + physicalPotentialContribution(player) / 2 + randomInt(-4, 7)),
+      Math.round(
+        playerOverall(player) +
+          8 +
+          physicalPotentialContribution(player) / 2 +
+          positionFitScore(player, position) / 6 +
+          randomInt(-5, 6)
+      ),
     45,
     99
   );
@@ -810,11 +925,11 @@ function deriveTeamProfileFromRoster(currentState) {
   }
   const average = (key) => Math.round(varsity.reduce((sum, player) => sum + player[key], 0) / varsity.length);
   return {
-    offense: Math.round((average("hitting") + average("setting") + average("serving")) / 3),
-    defense: Math.round((average("passing") + average("awareness") + average("resilience")) / 3),
-    serveReceive: Math.round((average("passing") + average("awareness")) / 2),
-    block: Math.round((average("blocking") + average("awareness")) / 2),
-    tempo: Math.round((average("resilience") + average("awareness")) / 2)
+    offense: Math.round((average("hitting") + average("setting") + average("serving") + average("athleticism")) / 4),
+    defense: Math.round((average("passing") + average("awareness") + average("resilience") + average("athleticism")) / 4),
+    serveReceive: Math.round((average("passing") + average("awareness") + average("athleticism")) / 3),
+    block: Math.round((average("blocking") + average("awareness") + average("athleticism")) / 3),
+    tempo: Math.round((average("resilience") + average("awareness") + average("athleticism") + average("setting")) / 4)
   };
 }
 
@@ -937,7 +1052,7 @@ function bestLiberoId(players, lineupIds = []) {
 
   const backcourt = players
     .filter((player) => !lineupSet.has(player.id))
-    .sort((a, b) => b.passing + b.awareness + b.resilience - (a.passing + a.awareness + a.resilience));
+    .sort((a, b) => b.passing + b.awareness + b.resilience + b.athleticism - (a.passing + a.awareness + a.resilience + a.athleticism));
   if (backcourt.length) return backcourt[0].id;
 
   const anyLibero = players.filter((player) => player.position === "LIB").sort((a, b) => playerOverall(b) - playerOverall(a));
@@ -974,7 +1089,7 @@ function calculateLiberoImpact(players, liberoId) {
   const libero = players.find((player) => player.id === liberoId);
   if (!libero) return -0.55;
   if (libero.position !== "LIB") return 0.05;
-  return clamp(0.35 + (libero.passing + libero.awareness + libero.resilience - 180) / 80, -0.2, 1.3);
+  return clamp(0.35 + (libero.passing + libero.awareness + libero.resilience + libero.athleticism - 240) / 85, -0.2, 1.4);
 }
 
 function ensureDefaultLineups(currentState) {
@@ -1832,7 +1947,7 @@ function grantExperienceForMatch(players, won, impactMagnitude, trainingLevel) {
       player.xp -= 100;
       const growthBudget = 1 + Math.floor((player.potential - playerOverall(player)) / 18) + Math.floor(trainingLevel / 2);
       let growthSpent = growthBudget;
-      const orderedSkills = shuffle(SKILLS);
+      const orderedSkills = growthSkillOrderForPosition(player.position);
       for (const skill of orderedSkills) {
         if (growthSpent <= 0) break;
         player[skill] = clamp(player[skill] + 1, 30, 99);
@@ -3067,8 +3182,9 @@ function progressProgramForNextSeason(draft) {
     const next = { ...player };
     next.grade += 1;
     const growthShots = 2 + Math.floor((next.potential - playerOverall(next)) / 20) + Math.floor(developmentBoost / 2);
+    const growthOrder = growthSkillOrderForPosition(next.position);
     for (let i = 0; i < growthShots; i += 1) {
-      const key = randomChoice(SKILLS);
+      const key = growthOrder[i % growthOrder.length] || randomChoice(SKILLS);
       next[key] = clamp(next[key] + randomInt(0, 2), 30, 99);
     }
     next.morale = clamp(next.morale + randomInt(-4, 6) + cultureBoost, 30, 99);
@@ -3337,13 +3453,14 @@ function migrateLegacyPlayer(player) {
   migrated.setting = clamp(migrated.setting ?? settingSeed, 30, 99);
   migrated.hitting = clamp(migrated.hitting ?? attackSeed, 30, 99);
   migrated.blocking = clamp(migrated.blocking ?? blockSeed, 30, 99);
+  migrated.athleticism = clamp(migrated.athleticism ?? athleticismSeed, 30, 99);
   migrated.awareness = clamp(
     migrated.awareness ?? Math.round((defenseSeed + settingSeed) / 2 + randomInt(-4, 4)),
     30,
     99
   );
   migrated.resilience = clamp(
-    migrated.resilience ?? Math.round((athleticismSeed + defenseSeed) / 2 + randomInt(-4, 4)),
+    migrated.resilience ?? Math.round((migrated.athleticism + defenseSeed) / 2 + randomInt(-4, 4)),
     30,
     99
   );
@@ -4609,9 +4726,17 @@ function renderTryouts() {
   const activeLocked = Boolean(locks[activePositionId]);
   const allLocked = allTryoutPositionsLocked(tryouts);
   const activeCounts = getTryoutPositionCounts(tryouts, activePositionId);
+  const activeFocusSkills = tryoutSkillPriorityForPosition(activePositionId).slice(0, 6);
+  const focusDescriptions = {
+    LIB: "Prioritize serve receive floor control and defensive consistency.",
+    OH: "Prioritize terminal offense with stable passing in transition.",
+    MB: "Prioritize blocking range, quick attacks, and first-step movement.",
+    S: "Prioritize decision quality, distribution, and offense orchestration.",
+    RS: "Prioritize right-side scoring, block pressure, and point-finishing."
+  };
   const activePlayers = candidates
     .filter((player) => player.position === activePositionId)
-    .sort((a, b) => playerOverall(b) - playerOverall(a));
+    .sort((a, b) => positionFitScore(b, activePositionId) - positionFitScore(a, activePositionId) || playerOverall(b) - playerOverall(a));
   const varsityCandidates = candidates
     .filter((player) => tryouts.assignments[player.id] === "varsity")
     .sort((a, b) => b.leadership - a.leadership);
@@ -4630,7 +4755,7 @@ function renderTryouts() {
           <div class="kpi"><strong>${tryouts.summary.noShows}</strong><span>No-Shows</span></div>
           <div class="kpi"><strong>${tryouts.summary.recruits || 0}</strong><span>Signed Recruits</span></div>
         </div>
-        <div class="line" style="margin-top:0.8rem;">
+        <div class="line" style="margin-top:0.8rem; flex-wrap:wrap; align-items:flex-start;">
           <div>
             <span class="tag">Varsity ${counts.varsity}/12</span>
             <span class="tag">JV ${counts.jv}/12</span>
@@ -4663,6 +4788,7 @@ function renderTryouts() {
             ${activeLocked ? `Unlock ${activeRule.label}` : `Lock ${activeRule.label}`}
           </button>
         </div>
+        <p class="footnote" style="margin-top:0.55rem;">${focusDescriptions[activePositionId] || "Prioritize role fit for this position group."}</p>
         <div class="grid-two" style="margin-top:0.8rem;">
           <label>
             Varsity Captain
@@ -4692,73 +4818,64 @@ function renderTryouts() {
       </div>
 
       <div class="card">
-        <div style="overflow-x:auto;">
-        <table>
-          <thead>
-            <tr>
-              <th>Player</th>
-              <th>Pos</th>
-              <th>Yr</th>
-              <th class="right">Ht</th>
-              <th class="right">Reach</th>
-              <th class="right">BT</th>
-              <th class="right">AT</th>
-              <th class="right">OVR</th>
-              <th class="right">Potential (est.)</th>
-              <th class="right">SV</th>
-              <th class="right">PS</th>
-              <th class="right">ST</th>
-              <th class="right">HT</th>
-              <th class="right">BL</th>
-              <th class="right">AW</th>
-              <th class="right">RS</th>
-              <th class="right">LD</th>
-              <th>Prev Team</th>
-              <th>Assign</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${activePlayers
-              .map((player) => {
-                const estimated = estimatePotential(player, state.career.upgrades.potentialVision);
-                const assignment = tryouts.assignments[player.id] || "cut";
-                const varsityDisabled =
-                  activeLocked ||
-                  (assignment !== "varsity" && activeCounts.varsity >= activeRule.varsity);
-                const jvDisabled =
-                  activeLocked ||
-                  (assignment !== "jv" && activeCounts.jv >= activeRule.jv);
-                return `
-                  <tr>
-                    <td>${renderPlayerIdentity(player, true)}</td>
-                    <td>${positionLabel(player.position)}</td>
-                    <td>${gradeLabel(player.grade)}</td>
-                    <td class="right">${formatHeight(player.heightInches)}</td>
-                    <td class="right">${formatHeight(player.standingReach)}</td>
-                    <td class="right">${formatHeight(player.blockTouch)}</td>
-                    <td class="right">${formatHeight(player.approachTouch)}</td>
-                    <td class="right">${playerOverall(player)}</td>
-                    <td class="right">${estimated}</td>
-                    <td class="right">${player.serving}</td>
-                    <td class="right">${player.passing}</td>
-                    <td class="right">${player.setting}</td>
-                    <td class="right">${player.hitting}</td>
-                    <td class="right">${player.blocking}</td>
-                    <td class="right">${player.awareness}</td>
-                    <td class="right">${player.resilience}</td>
-                    <td class="right">${player.leadership}</td>
-                    <td>${previousTeamLabel(player)}</td>
-                    <td>
-                      <button class="btn btn-secondary" data-action="set-assignment" data-player-id="${player.id}" data-value="varsity" ${(assignment === "varsity" || varsityDisabled) ? "disabled" : ""}>V</button>
-                      <button class="btn btn-secondary" data-action="set-assignment" data-player-id="${player.id}" data-value="jv" ${(assignment === "jv" || jvDisabled) ? "disabled" : ""}>JV</button>
-                      <button class="btn btn-secondary" data-action="set-assignment" data-player-id="${player.id}" data-value="cut" ${(assignment === "cut" || activeLocked) ? "disabled" : ""}>Cut</button>
-                    </td>
-                  </tr>
-                `;
-              })
-              .join("")}
-          </tbody>
-        </table>
+        <div class="line" style="margin-bottom:0.6rem; gap:0.45rem; align-items:flex-start;">
+          <div>
+            <h3 style="margin:0;">${activeRule.label} Candidates</h3>
+            <p class="subtle" style="margin:0.2rem 0 0;">Set assignments for this role only. Sort order favors position fit.</p>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:0.28rem;">
+            ${activeFocusSkills.map((skill) => `<span class="tag">${skillShortLabel(skill)}</span>`).join("")}
+          </div>
+        </div>
+        <div class="tryout-player-list">
+          ${activePlayers
+            .map((player) => {
+              const estimated = estimatePotential(player, state.career.upgrades.potentialVision);
+              const assignment = tryouts.assignments[player.id] || "cut";
+              const fitScore = positionFitScore(player, activePositionId);
+              const varsityDisabled =
+                activeLocked ||
+                (assignment !== "varsity" && activeCounts.varsity >= activeRule.varsity);
+              const jvDisabled =
+                activeLocked ||
+                (assignment !== "jv" && activeCounts.jv >= activeRule.jv);
+              const assignmentLabel = assignment === "varsity" ? "Varsity" : assignment === "jv" ? "JV" : "Cut";
+              const assignmentClass = assignment === "varsity" ? "good" : assignment === "jv" ? "" : "bad";
+              return `
+                <article class="tryout-player-card assignment-${assignment}">
+                  <div class="line" style="align-items:flex-start; gap:0.45rem;">
+                    <div>
+                      ${renderPlayerIdentity(player, true)}
+                      <div class="footnote" style="margin-top:0.2rem;">${gradeLabel(player.grade)} · ${positionLabel(player.position)}</div>
+                    </div>
+                    <span class="tag ${assignmentClass}">${assignmentLabel}</span>
+                  </div>
+                  <div class="tryout-player-metrics">
+                    <span class="tag">OVR ${playerOverall(player)}</span>
+                    <span class="tag">Pot ${estimated}</span>
+                    <span class="tag">Fit ${fitScore}</span>
+                    <span class="tag">Prev ${previousTeamLabel(player)}</span>
+                  </div>
+                  <div class="tryout-physical-grid">
+                    <div><strong>Ht</strong><span>${formatHeight(player.heightInches)}</span></div>
+                    <div><strong>Reach</strong><span>${formatHeight(player.standingReach)}</span></div>
+                    <div><strong>BT</strong><span>${formatHeight(player.blockTouch)}</span></div>
+                    <div><strong>AT</strong><span>${formatHeight(player.approachTouch)}</span></div>
+                  </div>
+                  <div class="tryout-skill-grid">
+                    ${activeFocusSkills
+                      .map((skill) => `<div><span>${skillShortLabel(skill)}</span><strong>${player[skill]}</strong></div>`)
+                      .join("")}
+                  </div>
+                  <div class="tryout-assignment-row">
+                    <button class="btn ${(assignment === "varsity") ? "btn-primary" : "btn-secondary"}" data-action="set-assignment" data-player-id="${player.id}" data-value="varsity" ${(assignment === "varsity" || varsityDisabled) ? "disabled" : ""}>Varsity</button>
+                    <button class="btn ${(assignment === "jv") ? "btn-accent" : "btn-secondary"}" data-action="set-assignment" data-player-id="${player.id}" data-value="jv" ${(assignment === "jv" || jvDisabled) ? "disabled" : ""}>JV</button>
+                    <button class="btn ${(assignment === "cut") ? "btn-danger" : "btn-secondary"}" data-action="set-assignment" data-player-id="${player.id}" data-value="cut" ${(assignment === "cut" || activeLocked) ? "disabled" : ""}>Cut</button>
+                  </div>
+                </article>
+              `;
+            })
+            .join("")}
         </div>
       </div>
 
@@ -5251,6 +5368,7 @@ function renderSeasonPlayerStatsTab() {
               <th class="right">ST</th>
               <th class="right">HT</th>
               <th class="right">BL</th>
+              <th class="right">ATH</th>
               <th class="right">AW</th>
               <th class="right">RS</th>
               <th class="right">LD</th>
@@ -5286,6 +5404,7 @@ function renderSeasonPlayerStatsTab() {
                     <td class="right">${player.setting}</td>
                     <td class="right">${player.hitting}</td>
                     <td class="right">${player.blocking}</td>
+                    <td class="right">${player.athleticism}</td>
                     <td class="right">${player.awareness}</td>
                     <td class="right">${player.resilience}</td>
                     <td class="right">${player.leadership}</td>

@@ -385,6 +385,99 @@ body {
   color: #1f6c45;
 }
 
+.tryout-player-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.tryout-player-card {
+  border: 1px solid rgba(42, 35, 27, 0.15);
+  border-radius: 12px;
+  background: linear-gradient(165deg, #fff9ef 0%, #f5ecda 100%);
+  padding: 0.65rem;
+}
+
+.tryout-player-card.assignment-varsity {
+  border-color: rgba(217, 72, 22, 0.38);
+}
+
+.tryout-player-card.assignment-jv {
+  border-color: rgba(14, 90, 138, 0.38);
+}
+
+.tryout-player-card.assignment-cut {
+  border-color: rgba(113, 100, 79, 0.22);
+}
+
+.tryout-player-metrics {
+  margin-top: 0.48rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+}
+
+.tryout-physical-grid {
+  margin-top: 0.48rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.28rem;
+}
+
+.tryout-physical-grid div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.42rem;
+  border-radius: 8px;
+  background: rgba(232, 220, 194, 0.66);
+  padding: 0.3rem 0.42rem;
+  font-size: 0.78rem;
+}
+
+.tryout-physical-grid strong {
+  font-family: "Bebas Neue", sans-serif;
+  letter-spacing: 0.04em;
+  color: #44382a;
+}
+
+.tryout-skill-grid {
+  margin-top: 0.48rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.28rem;
+}
+
+.tryout-skill-grid div {
+  border-radius: 8px;
+  border: 1px solid rgba(52, 46, 36, 0.14);
+  background: rgba(255, 251, 242, 0.93);
+  padding: 0.24rem 0.35rem 0.27rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+}
+
+.tryout-skill-grid span {
+  color: #6a5b46;
+}
+
+.tryout-skill-grid strong {
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 0.92rem;
+  letter-spacing: 0.04em;
+  color: #2f271d;
+}
+
+.tryout-assignment-row {
+  margin-top: 0.55rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
 .btn {
   border: 0;
   border-radius: 10px;
@@ -654,6 +747,10 @@ th {
   .lineup-libero-row {
     grid-template-columns: 1fr;
   }
+
+  .tryout-player-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -730,6 +827,22 @@ th {
   }
 
   .tryout-position-pill {
+    width: 100%;
+  }
+
+  .tryout-player-card {
+    padding: 0.55rem;
+  }
+
+  .tryout-skill-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tryout-assignment-row {
+    grid-template-columns: 1fr;
+  }
+
+  .tryout-assignment-row .btn {
     width: 100%;
   }
 }
