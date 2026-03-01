@@ -86,3 +86,24 @@ Notes:
 - `index.html` - app shell
 - `styles.css` - visual theme and responsive layout
 - `app.js` - game logic, simulation, UI rendering, autosave
+
+## Native Playtest App
+
+A separate native playtest build is available at:
+
+- `/Users/andrew.oh/volleyball-dynasty-app/native-playtest`
+
+This version is focused on mobile UX experimentation:
+
+- Simplified tryout flow
+- Device-local autosave
+- Drag-and-drop lineup editing
+- In-season JV to Varsity call-ups
+
+Run:
+
+```bash
+cd /Users/andrew.oh/volleyball-dynasty-app/native-playtest
+npm install
+npm start
+```
