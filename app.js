@@ -11,6 +11,21 @@ const MAX_RECRUIT_OFFERS = 5;
 const RESUME_QUALITY_WIN_STRENGTH = 70;
 const RESUME_BAD_LOSS_STRENGTH = 56;
 const SEASON_PHASE_STAGES = ["tryouts", "preseason", "season", "postseason", "offseason"];
+const TRYOUT_POSITION_RULES = [
+  { id: "LIB", label: "Libero", varsity: 2, jv: 2 },
+  { id: "OH", label: "Outside Hitter", varsity: 3, jv: 3 },
+  { id: "MB", label: "Middle Blocker", varsity: 3, jv: 3 },
+  { id: "S", label: "Setter", varsity: 2, jv: 2 },
+  { id: "RS", label: "Opposite", varsity: 2, jv: 2 }
+];
+const LINEUP_ROLE_SLOTS = [
+  { index: 0, label: "Outside 1", expectedPosition: "OH" },
+  { index: 1, label: "Outside 2", expectedPosition: "OH" },
+  { index: 2, label: "Middle 1", expectedPosition: "MB" },
+  { index: 3, label: "Middle 2", expectedPosition: "MB" },
+  { index: 4, label: "Setter", expectedPosition: "S" },
+  { index: 5, label: "Opposite", expectedPosition: "RS" }
+];
 const GAMEPLAN_OPTIONS = [
   { id: "balanced", label: "Balanced" },
   { id: "serve_pressure", label: "Serve Pressure" },
@@ -411,11 +426,29 @@ function gradeLabel(grade) {
   return "Sr";
 }
 
+function positionLabel(position) {
+  const labels = {
+    OH: "Outside",
+    MB: "Middle",
+    S: "Setter",
+    RS: "Opposite",
+    LIB: "Libero"
+  };
+  return labels[position] || position;
+}
+
 function formatHeight(inches) {
   const safe = Math.round(inches || 0);
   const feet = Math.floor(safe / 12);
   const rem = safe % 12;
   return `${feet}'${rem}"`;
+}
+
+function previousTeamLabel(player) {
+  const team = player.lastTeam || null;
+  if (!team) return "N/A";
+  if (player.lastTeamWasTransfer) return `${team} (Transfer)`;
+  return team;
 }
 
 function friendlyFocusLabel(focusId) {
@@ -524,6 +557,8 @@ function createPlayer(draft, opts = {}) {
     potential: 0,
     xp: opts.xp ?? 0,
     morale,
+    lastTeam: opts.lastTeam ?? null,
+    lastTeamWasTransfer: Boolean(opts.lastTeamWasTransfer),
     origin: opts.origin ?? "freshman",
     yearsInProgram: opts.yearsInProgram ?? 0,
     seasonStats: opts.seasonStats ?? {
@@ -724,13 +759,85 @@ function getJvPlayers(currentState) {
   return currentState.program.rosterPlayers.filter((player) => ids.has(player.id));
 }
 
+function findTryoutPositionRule(positionId) {
+  return TRYOUT_POSITION_RULES.find((rule) => rule.id === positionId) || null;
+}
+
+function makeTryoutPositionLocks(defaultLocked = false) {
+  const locks = {};
+  for (const rule of TRYOUT_POSITION_RULES) {
+    locks[rule.id] = defaultLocked;
+  }
+  return locks;
+}
+
+function firstTryoutPositionId(tryouts) {
+  const locks = tryouts?.positionLocks || {};
+  const firstUnlocked = TRYOUT_POSITION_RULES.find((rule) => !locks[rule.id]);
+  return firstUnlocked?.id || TRYOUT_POSITION_RULES[0].id;
+}
+
+function getTryoutPositionCounts(tryouts, positionId) {
+  if (!tryouts) return { varsity: 0, jv: 0, cut: 0, total: 0 };
+  const players = (tryouts.candidates || []).filter((player) => player.position === positionId);
+  const counts = { varsity: 0, jv: 0, cut: 0, total: players.length };
+  for (const player of players) {
+    const assignment = tryouts.assignments[player.id] || "cut";
+    if (assignment === "varsity") counts.varsity += 1;
+    else if (assignment === "jv") counts.jv += 1;
+    else counts.cut += 1;
+  }
+  return counts;
+}
+
+function validateTryoutPositionLocked(tryouts, positionId) {
+  const rule = findTryoutPositionRule(positionId);
+  if (!rule) return { ok: false, message: "Unknown position." };
+  const counts = getTryoutPositionCounts(tryouts, positionId);
+  if (counts.varsity !== rule.varsity || counts.jv !== rule.jv) {
+    return {
+      ok: false,
+      message: `${rule.label} requires Varsity ${rule.varsity} and JV ${rule.jv}.`
+    };
+  }
+  return { ok: true };
+}
+
+function allTryoutPositionsLocked(tryouts) {
+  if (!tryouts) return false;
+  return TRYOUT_POSITION_RULES.every((rule) => Boolean(tryouts.positionLocks?.[rule.id]));
+}
+
 function bestLineupIds(players, captainId = null) {
   const ranked = [...players].sort((a, b) => playerOverall(b) - playerOverall(a));
-  let best = ranked.slice(0, 6).map((player) => player.id);
-  if (captainId && !best.includes(captainId) && ranked.some((player) => player.id === captainId)) {
-    best = [captainId, ...best.filter((id) => id !== captainId)].slice(0, 6);
+  const lineup = [];
+  const used = new Set();
+  for (const slot of LINEUP_ROLE_SLOTS) {
+    let pick = ranked.find((player) => player.position === slot.expectedPosition && !used.has(player.id));
+    if (!pick) {
+      pick = ranked.find((player) => !used.has(player.id));
+    }
+    if (!pick) break;
+    lineup.push(pick.id);
+    used.add(pick.id);
   }
-  return best;
+  while (lineup.length < 6) {
+    const fallback = ranked.find((player) => !used.has(player.id));
+    if (!fallback) break;
+    lineup.push(fallback.id);
+    used.add(fallback.id);
+  }
+  const captain = ranked.find((player) => player.id === captainId) || null;
+  if (captainId && captain?.position !== "LIB" && !lineup.includes(captainId) && ranked.some((player) => player.id === captainId)) {
+    const lowestIdx = lineup
+      .map((id, idx) => {
+        const found = ranked.find((player) => player.id === id);
+        return { id, idx, ovr: found ? playerOverall(found) : 0 };
+      })
+      .sort((a, b) => a.ovr - b.ovr)[0]?.idx;
+    if (lowestIdx != null) lineup[lowestIdx] = captainId;
+  }
+  return lineup.slice(0, 6);
 }
 
 function sanitizeLineupIds(players, lineupIds, captainId = null) {
@@ -740,7 +847,8 @@ function sanitizeLineupIds(players, lineupIds, captainId = null) {
     if (valid.has(id) && !unique.includes(id)) unique.push(id);
   }
   const ranked = [...players].sort((a, b) => playerOverall(b) - playerOverall(a));
-  if (captainId && valid.has(captainId) && !unique.includes(captainId)) {
+  const captain = players.find((player) => player.id === captainId) || null;
+  if (captainId && valid.has(captainId) && captain?.position !== "LIB" && !unique.includes(captainId)) {
     unique.unshift(captainId);
   }
   for (const player of ranked) {
@@ -750,10 +858,64 @@ function sanitizeLineupIds(players, lineupIds, captainId = null) {
   return unique.slice(0, Math.min(6, players.length));
 }
 
+function bestLiberoId(players, lineupIds = []) {
+  if (!players.length) return null;
+  const lineupSet = new Set(lineupIds || []);
+  const liberos = players
+    .filter((player) => player.position === "LIB" && !lineupSet.has(player.id))
+    .sort((a, b) => playerOverall(b) - playerOverall(a));
+  if (liberos.length) return liberos[0].id;
+
+  const backcourt = players
+    .filter((player) => !lineupSet.has(player.id))
+    .sort((a, b) => b.passing + b.awareness + b.resilience - (a.passing + a.awareness + a.resilience));
+  if (backcourt.length) return backcourt[0].id;
+
+  const anyLibero = players.filter((player) => player.position === "LIB").sort((a, b) => playerOverall(b) - playerOverall(a));
+  return anyLibero[0]?.id || players[0].id;
+}
+
+function sanitizeLiberoId(players, liberoId, lineupIds = []) {
+  const valid = new Set(players.map((player) => player.id));
+  if (liberoId && valid.has(liberoId) && !(lineupIds || []).includes(liberoId)) return liberoId;
+  return bestLiberoId(players, lineupIds);
+}
+
+function calculateOutOfPositionPenalty(players, lineupIds, liberoId = null) {
+  const byId = new Map(players.map((player) => [player.id, player]));
+  let penalty = 0;
+  for (const slot of LINEUP_ROLE_SLOTS) {
+    const player = byId.get(lineupIds?.[slot.index]);
+    if (!player) {
+      penalty += 1.4;
+      continue;
+    }
+    if (player.position !== slot.expectedPosition) penalty += 1.15;
+  }
+  const libero = byId.get(liberoId);
+  if (!libero) {
+    penalty += 1.15;
+  } else if (libero.position !== "LIB") {
+    penalty += 0.9;
+  }
+  return penalty;
+}
+
+function calculateLiberoImpact(players, liberoId) {
+  const libero = players.find((player) => player.id === liberoId);
+  if (!libero) return -0.55;
+  if (libero.position !== "LIB") return 0.05;
+  return clamp(0.35 + (libero.passing + libero.awareness + libero.resilience - 180) / 80, -0.2, 1.3);
+}
+
 function ensureDefaultLineups(currentState) {
   currentState.team.defaultLineups = currentState.team.defaultLineups || {
     varsity: [],
     jv: []
+  };
+  currentState.team.defaultLiberos = currentState.team.defaultLiberos || {
+    varsityId: null,
+    jvId: null
   };
   const varsity = getVarsityPlayers(currentState);
   const jv = getJvPlayers(currentState);
@@ -767,6 +929,16 @@ function ensureDefaultLineups(currentState) {
     currentState.team.defaultLineups.jv || [],
     currentState.team.captains?.jvId
   );
+  currentState.team.defaultLiberos.varsityId = sanitizeLiberoId(
+    varsity,
+    currentState.team.defaultLiberos.varsityId,
+    currentState.team.defaultLineups.varsity
+  );
+  currentState.team.defaultLiberos.jvId = sanitizeLiberoId(
+    jv,
+    currentState.team.defaultLiberos.jvId,
+    currentState.team.defaultLineups.jv
+  );
 }
 
 function getDefaultLineupIds(currentState, teamType = "varsity") {
@@ -774,6 +946,12 @@ function getDefaultLineupIds(currentState, teamType = "varsity") {
   const captainId = teamType === "varsity" ? currentState.team.captains?.varsityId : currentState.team.captains?.jvId;
   const saved = currentState.team.defaultLineups?.[teamType] || [];
   return sanitizeLineupIds(players, saved.length ? saved : bestLineupIds(players, captainId), captainId);
+}
+
+function getDefaultLiberoId(currentState, teamType = "varsity") {
+  const players = teamType === "varsity" ? getVarsityPlayers(currentState) : getJvPlayers(currentState);
+  const lineupIds = getDefaultLineupIds(currentState, teamType);
+  return sanitizeLiberoId(players, currentState.team.defaultLiberos?.[`${teamType}Id`], lineupIds);
 }
 
 function updateLineupSlot(lineupIds, slotIndex, selectedPlayerId, players, captainId = null) {
@@ -1019,6 +1197,30 @@ function autoCaptainFromRosterIds(currentState, ids) {
   return eligible[0].id;
 }
 
+function ensureTryoutPositionDepth(draft, pool) {
+  let added = 0;
+  for (const rule of TRYOUT_POSITION_RULES) {
+    const required = rule.varsity + rule.jv;
+    const current = pool.filter((player) => player.position === rule.id).length;
+    const deficit = Math.max(0, required - current);
+    for (let i = 0; i < deficit; i += 1) {
+      pool.push(
+        createPlayer(draft, {
+          grade: randomInt(9, 11),
+          position: rule.id,
+          baseSkill: randomInt(40, 58),
+          potential: randomInt(55, 91),
+          origin: "walk-on",
+          lastTeam: null,
+          lastTeamWasTransfer: false
+        })
+      );
+      added += 1;
+    }
+  }
+  return added;
+}
+
 function generateTryoutPool(draft, summary = null) {
   const returning = [];
   const noShows = [];
@@ -1026,9 +1228,13 @@ function generateTryoutPool(draft, summary = null) {
   const incomingFreshmen = randomInt(8, 13);
   const returningFreeAgents = [];
   const returningRosterPool = [];
+  const priorVarsityIds = new Set(draft.team.rosters?.varsityIds || []);
+  const priorJvIds = new Set(draft.team.rosters?.jvIds || []);
   const incomingCommits = (draft.program.incomingCommits || []).map((player) => ({
     ...player,
-    origin: "recruit"
+    origin: "recruit",
+    lastTeam: null,
+    lastTeamWasTransfer: false
   }));
 
   for (const player of draft.program.rosterPlayers) {
@@ -1040,8 +1246,14 @@ function generateTryoutPool(draft, summary = null) {
       noShows.push(player);
       continue;
     }
+    const lastTeam =
+      player.lastTeam ||
+      (priorVarsityIds.has(player.id) ? "Varsity" : priorJvIds.has(player.id) ? "JV" : "JV");
     returning.push({
       ...player,
+      grade: Math.max(player.grade, 10),
+      lastTeam,
+      lastTeamWasTransfer: false,
       origin: "returning"
     });
     returningRosterPool.push(player.id);
@@ -1053,6 +1265,8 @@ function generateTryoutPool(draft, summary = null) {
     if (Math.random() < returnChance) {
       const improved = {
         ...freeAgent,
+        lastTeam: freeAgent.lastTeam || null,
+        lastTeamWasTransfer: false,
         origin: "walk-on"
       };
       SKILLS.forEach((key) => {
@@ -1068,7 +1282,9 @@ function generateTryoutPool(draft, summary = null) {
       grade: randomInt(10, 12),
       baseSkill: clamp(Math.round(transferBase + randomInt(-8, 9)), 42, 90),
       potential: clamp(transferBase + randomInt(6, 20), 55, 98),
-      origin: "transfer"
+      origin: "transfer",
+      lastTeam: randomChoice(["Varsity", "JV"]),
+      lastTeamWasTransfer: true
     })
   );
 
@@ -1077,28 +1293,37 @@ function generateTryoutPool(draft, summary = null) {
       grade: 9,
       baseSkill: randomInt(42, 62),
       potential: randomInt(58, 96),
-      origin: "freshman"
+      origin: "freshman",
+      lastTeam: null,
+      lastTeamWasTransfer: false
     })
   );
 
-  const pool = [...returning, ...incomingCommits, ...returningFreeAgents, ...transfers, ...freshmen].map((candidate) => ({
-    ...candidate,
-    seasonStats: {
-      setsPlayed: 0,
-      impact: 0
-    }
-  }));
+  const pool = [...returning, ...incomingCommits, ...returningFreeAgents, ...transfers, ...freshmen].map(
+    (candidate) => ({
+      ...candidate,
+      seasonStats: {
+        setsPlayed: 0,
+        impact: 0
+      }
+    })
+  );
+  const forcedPositionAdds = ensureTryoutPositionDepth(draft, pool);
 
   const minimumPool = 26;
+  let extraWalkOns = 0;
   while (pool.length < minimumPool) {
     pool.push(
       createPlayer(draft, {
         grade: randomInt(9, 11),
         baseSkill: randomInt(40, 58),
         potential: randomInt(55, 91),
-        origin: "walk-on"
+        origin: "walk-on",
+        lastTeam: null,
+        lastTeamWasTransfer: false
       })
     );
+    extraWalkOns += 1;
   }
 
   const assignments = {};
@@ -1113,12 +1338,14 @@ function generateTryoutPool(draft, summary = null) {
       varsityId: null,
       jvId: null
     },
+    positionLocks: makeTryoutPositionLocks(false),
+    activePositionId: TRYOUT_POSITION_RULES[0].id,
     summary: {
       returning: returning.length,
       noShows: noShows.length,
       transfers: transfers.length,
       freshmen: freshmen.length,
-      walkOns: returningFreeAgents.length,
+      walkOns: returningFreeAgents.length + forcedPositionAdds + extraWalkOns,
       recruits: incomingCommits.length
     },
     autoMode: "skill"
@@ -1133,27 +1360,37 @@ function generateTryoutPool(draft, summary = null) {
 
 function applyTryoutAutofill(draft, mode) {
   if (!draft.tryouts) return;
-  const ranked = [...draft.tryouts.candidates].sort((a, b) => {
-    const aScore = mode === "potential" ? a.potential : playerOverall(a);
-    const bScore = mode === "potential" ? b.potential : playerOverall(b);
-    return bScore - aScore;
-  });
   const assignments = {};
-  for (const candidate of ranked) {
+  for (const candidate of draft.tryouts.candidates) {
     assignments[candidate.id] = "cut";
   }
-  ranked.slice(0, 12).forEach((candidate) => {
-    assignments[candidate.id] = "varsity";
-  });
-  ranked.slice(12, 24).forEach((candidate) => {
-    assignments[candidate.id] = "jv";
-  });
+
+  const scoreFor = (player) => (mode === "potential" ? player.potential : playerOverall(player));
+  for (const rule of TRYOUT_POSITION_RULES) {
+    const ranked = [...draft.tryouts.candidates]
+      .filter((player) => player.position === rule.id)
+      .sort((a, b) => scoreFor(b) - scoreFor(a));
+    ranked.slice(0, rule.varsity).forEach((candidate) => {
+      assignments[candidate.id] = "varsity";
+    });
+    ranked.slice(rule.varsity, rule.varsity + rule.jv).forEach((candidate) => {
+      assignments[candidate.id] = "jv";
+    });
+  }
+
   draft.tryouts.assignments = assignments;
-  const varsityCandidates = ranked.slice(0, 12).sort((a, b) => b.leadership - a.leadership);
-  const jvCandidates = ranked.slice(12, 24).sort((a, b) => b.leadership - a.leadership);
+  draft.tryouts.positionLocks = makeTryoutPositionLocks(true);
+  draft.tryouts.activePositionId = TRYOUT_POSITION_RULES[TRYOUT_POSITION_RULES.length - 1].id;
+
+  const rankedVarsity = draft.tryouts.candidates
+    .filter((player) => assignments[player.id] === "varsity")
+    .sort((a, b) => b.leadership - a.leadership || playerOverall(b) - playerOverall(a));
+  const rankedJv = draft.tryouts.candidates
+    .filter((player) => assignments[player.id] === "jv")
+    .sort((a, b) => b.leadership - a.leadership || playerOverall(b) - playerOverall(a));
   draft.tryouts.captainSelections = {
-    varsityId: varsityCandidates[0]?.id || null,
-    jvId: jvCandidates[0]?.id || null
+    varsityId: rankedVarsity[0]?.id || null,
+    jvId: rankedJv[0]?.id || null
   };
   draft.tryouts.autoMode = mode;
 }
@@ -1173,6 +1410,13 @@ function finalizeTryouts(draft) {
   if (varsities.length !== 12 || jvs.length !== 12) {
     return { ok: false, message: "Select exactly 12 Varsity and 12 JV players." };
   }
+  if (!allTryoutPositionsLocked(draft.tryouts)) {
+    return { ok: false, message: "Lock each position group before finalizing tryouts." };
+  }
+  for (const rule of TRYOUT_POSITION_RULES) {
+    const validation = validateTryoutPositionLocked(draft.tryouts, rule.id);
+    if (!validation.ok) return validation;
+  }
 
   const varsityCaptainId = draft.tryouts.captainSelections?.varsityId;
   const jvCaptainId = draft.tryouts.captainSelections?.jvId;
@@ -1188,11 +1432,15 @@ function finalizeTryouts(draft) {
 
   draft.program.rosterPlayers = [...varsities, ...jvs].map((player) => ({
     ...player,
+    lastTeam: varsities.some((candidate) => candidate.id === player.id) ? "Varsity" : "JV",
+    lastTeamWasTransfer: false,
     yearsInProgram: (player.yearsInProgram ?? 0) + 1
   }));
 
   draft.program.freeAgents = [...cuts, ...(draft.program.noShowPlayers || [])].map((player) => ({
     ...player,
+    lastTeam: player.lastTeam || null,
+    lastTeamWasTransfer: false,
     yearsInProgram: player.yearsInProgram ?? 0
   }));
 
@@ -1205,6 +1453,10 @@ function finalizeTryouts(draft) {
   draft.team.defaultLineups = {
     varsity: sanitizeLineupIds(varsities, bestLineupIds(varsities, varsityCaptainId), varsityCaptainId),
     jv: sanitizeLineupIds(jvs, bestLineupIds(jvs, jvCaptainId), jvCaptainId)
+  };
+  draft.team.defaultLiberos = {
+    varsityId: sanitizeLiberoId(varsities, null, draft.team.defaultLineups.varsity),
+    jvId: sanitizeLiberoId(jvs, null, draft.team.defaultLineups.jv)
   };
 
   const continuity = varsities.filter((player) => (draft.program.returningRosterIds || []).includes(player.id)).length;
@@ -1448,12 +1700,20 @@ function simulateBestOfFive(teamPower, opponentPower, setsToWin = 3) {
   };
 }
 
-function computeVaristyPowerForMatch(currentState, week, opponent, lineupIds = null) {
+function computeVaristyPowerForMatch(currentState, week, opponent, lineupIds = null, liberoId = null) {
   const varsity = getVarsityPlayers(currentState);
   const rosterPower = computeRosterPower(varsity);
-  const activeLineupIds = lineupIds && lineupIds.length ? lineupIds : varsity.slice(0, 6).map((player) => player.id);
-  const captainEffect = calculateCaptainEffect(currentState, "varsity", varsity, activeLineupIds);
+  const activeLineupIds = sanitizeLineupIds(
+    varsity,
+    lineupIds && lineupIds.length ? lineupIds : bestLineupIds(varsity, currentState.team.captains?.varsityId),
+    currentState.team.captains?.varsityId
+  );
+  const activeLiberoId = sanitizeLiberoId(varsity, liberoId || getDefaultLiberoId(currentState, "varsity"), activeLineupIds);
+  const captainIds = [...activeLineupIds, activeLiberoId].filter(Boolean);
+  const captainEffect = calculateCaptainEffect(currentState, "varsity", varsity, captainIds);
   const lineupDelta = (lineupPower(varsity, activeLineupIds) - rosterPower) / 2.8;
+  const liberoImpact = calculateLiberoImpact(varsity, activeLiberoId);
+  const outOfPositionPenalty = calculateOutOfPositionPenalty(varsity, activeLineupIds, activeLiberoId);
   const profile = deriveTeamProfileFromRoster(currentState);
   const teamNode = userTeamInfo(currentState);
   teamNode.profile = profile;
@@ -1469,12 +1729,24 @@ function computeVaristyPowerForMatch(currentState, week, opponent, lineupIds = n
   const homeBonus = 0.8;
 
   return {
-    base: rosterPower + chemistryBoost + focusBonus + upgradeBonus + homeBonus + captainEffect + lineupDelta,
+    base:
+      rosterPower +
+      chemistryBoost +
+      focusBonus +
+      upgradeBonus +
+      homeBonus +
+      captainEffect +
+      lineupDelta +
+      liberoImpact -
+      outOfPositionPenalty,
     weeklyEffects,
     varsity,
     captainEffect,
     lineupDelta,
-    lineupIds: activeLineupIds
+    liberoImpact,
+    outOfPositionPenalty,
+    lineupIds: activeLineupIds,
+    liberoId: activeLiberoId
   };
 }
 
@@ -1504,8 +1776,9 @@ function grantExperienceForMatch(players, won, impactMagnitude, trainingLevel) {
 
 function buildLeagueMatchContext(draft, week, match, opponent, pregame) {
   const gameplan = pregame?.gameplan || match.gameplan || "balanced";
-  const lineupIds = pregame?.lineupIds || getVarsityPlayers(draft).slice(0, 6).map((player) => player.id);
-  const teamContext = computeVaristyPowerForMatch(draft, week, opponent, lineupIds);
+  const lineupIds = pregame?.lineupIds || getDefaultLineupIds(draft, "varsity");
+  const liberoId = pregame?.liberoId || getDefaultLiberoId(draft, "varsity");
+  const teamContext = computeVaristyPowerForMatch(draft, week, opponent, lineupIds, liberoId);
   const gameplanBonus = computeCounterKnowledgeBonus(draft, week, opponent, gameplan);
   let teamPower = teamContext.base + gameplanBonus;
 
@@ -1526,7 +1799,8 @@ function buildLeagueMatchContext(draft, week, match, opponent, pregame) {
     opponentPower,
     gameplanBonus,
     gameplan,
-    lineupIds
+    lineupIds: teamContext.lineupIds,
+    liberoId: teamContext.liberoId
   };
 }
 
@@ -1627,6 +1901,7 @@ function completeLeagueMatch(
     jv: jvResult,
     gameplan: context.gameplan,
     lineupIds: context.lineupIds,
+    liberoId: context.liberoId || null,
     rankingGain,
     opponentStrength: opponent.strength,
     dateIndex: draft.season.matchesPlayed.length + 1,
@@ -1663,6 +1938,7 @@ function createLiveMatchSession(match, context, opponent, pregame) {
     opponentPower: context.opponentPower,
     gameplan: context.gameplan,
     lineupIds,
+    liberoId: pregame?.liberoId || context.liberoId || null,
     benchIds: (pregame?.benchIds || []).filter((id) => !lineupIds.includes(id)),
     opponentName: `${opponent.schoolName} ${opponent.mascot}`,
     serving: Math.random() < 0.5 ? "team" : "opp",
@@ -1954,13 +2230,18 @@ function playLeagueMatch(draft, weekId, matchId) {
   const varsity = getVarsityPlayers(draft).sort((a, b) => playerOverall(b) - playerOverall(a));
   ensureDefaultLineups(draft);
   const defaultLineup = getDefaultLineupIds(draft, "varsity");
+  const defaultLiberoId = getDefaultLiberoId(draft, "varsity");
   draft.team.defaultLineups.varsity = [...defaultLineup];
+  draft.team.defaultLiberos.varsityId = defaultLiberoId;
   const lineupSet = new Set(defaultLineup);
-  const bench = varsity.filter((player) => !lineupSet.has(player.id)).map((player) => player.id);
+  const bench = varsity
+    .filter((player) => !lineupSet.has(player.id) && player.id !== defaultLiberoId)
+    .map((player) => player.id);
   match.status = "pregame";
   match.pregame = {
     gameplan: "balanced",
     lineupIds: defaultLineup,
+    liberoId: defaultLiberoId,
     benchIds: bench
   };
   return { ok: true, pregameOpened: true, message: `Match prep opened vs ${match.opponentName}.` };
@@ -1969,18 +2250,27 @@ function playLeagueMatch(draft, weekId, matchId) {
 function lockMatchPregame(draft, weekId, matchId) {
   const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
   if (!week || week.kind !== "league") return { ok: false, message: "Week not found." };
+  ensureDefaultLineups(draft);
   const match = week.matches.find((candidate) => candidate.id === matchId);
   if (!match || match.status !== "pregame" || !match.pregame) {
     return { ok: false, message: "No pregame setup to lock." };
   }
   const varsity = getVarsityPlayers(draft);
   const lineupIds = sanitizeLineupIds(varsity, match.pregame.lineupIds || [], draft.team.captains?.varsityId);
+  const liberoId = sanitizeLiberoId(varsity, match.pregame.liberoId, lineupIds);
   match.pregame.lineupIds = lineupIds;
+  match.pregame.liberoId = liberoId;
   if (lineupIds.length !== 6) {
     return { ok: false, message: "Select exactly 6 starters before locking pregame." };
   }
+  if (!liberoId) {
+    return { ok: false, message: "Select a libero before locking pregame." };
+  }
   draft.team.defaultLineups.varsity = [...lineupIds];
-  match.pregame.benchIds = varsity.filter((player) => !lineupIds.includes(player.id)).map((player) => player.id);
+  draft.team.defaultLiberos.varsityId = liberoId;
+  match.pregame.benchIds = varsity
+    .filter((player) => !lineupIds.includes(player.id) && player.id !== liberoId)
+    .map((player) => player.id);
   const opponent = findTeamById(draft, match.opponentId);
   const context = buildLeagueMatchContext(draft, week, match, opponent, match.pregame);
   match.gameplan = match.pregame.gameplan;
@@ -1998,11 +2288,12 @@ function runLiveMatchAction(draft, weekId, matchId, action) {
 
   const opponent = findTeamById(draft, match.opponentId);
   const context = {
-    teamContext: computeVaristyPowerForMatch(draft, week, opponent, match.live.lineupIds),
+    teamContext: computeVaristyPowerForMatch(draft, week, opponent, match.live.lineupIds, match.live.liberoId),
     teamPower: match.live.teamPower,
     opponentPower: match.live.opponentPower,
     gameplan: match.live.gameplan,
-    lineupIds: match.live.lineupIds
+    lineupIds: match.live.lineupIds,
+    liberoId: match.live.liberoId
   };
   if (action.startsWith("scenario:")) {
     const optionId = action.slice("scenario:".length);
@@ -2755,6 +3046,10 @@ function progressProgramForNextSeason(draft) {
     varsity: [],
     jv: []
   };
+  draft.team.defaultLiberos = {
+    varsityId: null,
+    jvId: null
+  };
   draft.phase = "tryouts";
   const transferInterest = draft.offseason?.transferInterest || 0;
   const summary = {
@@ -2809,6 +3104,10 @@ function createInitialState() {
       defaultLineups: {
         varsity: [],
         jv: []
+      },
+      defaultLiberos: {
+        varsityId: null,
+        jvId: null
       }
     },
     program: {
@@ -2830,7 +3129,7 @@ function createInitialState() {
   initial.world = createWorldForSeason(initial.career, initial.career.schoolName, initial.career.mascot);
   const starterPlayers = Array.from({ length: 20 }).map(() =>
     createPlayer(initial, {
-      grade: randomInt(9, 11),
+      grade: randomInt(10, 11),
       baseSkill: randomInt(44, 62),
       potential: randomInt(58, 95),
       origin: "returning"
@@ -2955,6 +3254,8 @@ function migrateLegacyPlayer(player) {
   const migrated = { ...player };
   migrated.gender = "M";
   migrated.avatarSeed = migrated.avatarSeed ?? `${migrated.id || migrated.name || "legacy"}-${hashSeed(migrated.name || migrated.id || Date.now())}`;
+  migrated.lastTeam = migrated.lastTeam ?? null;
+  migrated.lastTeamWasTransfer = Boolean(migrated.lastTeamWasTransfer);
   const athleticismSeed = migrated.athleticism ?? migrated.resilience ?? 58;
   const defenseSeed = migrated.defense ?? migrated.passing ?? 58;
   const attackSeed = migrated.attack ?? migrated.hitting ?? 58;
@@ -3017,10 +3318,16 @@ function normalizeLoadedState(loaded) {
   const normalized = loaded;
   normalized.notices = normalized.notices || [];
   normalized.preseason = normalized.preseason || { selectedTournamentIds: [] };
-  normalized.team = normalized.team || { chemistry: 55, rosters: { varsityIds: [], jvIds: [] }, defaultLineups: { varsity: [], jv: [] } };
+  normalized.team = normalized.team || {
+    chemistry: 55,
+    rosters: { varsityIds: [], jvIds: [] },
+    defaultLineups: { varsity: [], jv: [] },
+    defaultLiberos: { varsityId: null, jvId: null }
+  };
   normalized.team.rosters = normalized.team.rosters || { varsityIds: [], jvIds: [] };
   normalized.team.captains = normalized.team.captains || { varsityId: null, jvId: null };
   normalized.team.defaultLineups = normalized.team.defaultLineups || { varsity: [], jv: [] };
+  normalized.team.defaultLiberos = normalized.team.defaultLiberos || { varsityId: null, jvId: null };
   normalized.program = normalized.program || {
     rosterPlayers: [],
     freeAgents: [],
@@ -3044,6 +3351,14 @@ function normalizeLoadedState(loaded) {
   ensureDefaultLineups(normalized);
   if (normalized.tryouts?.candidates) {
     normalized.tryouts.candidates = normalized.tryouts.candidates.map(migrateLegacyPlayer);
+    normalized.tryouts.positionLocks = normalized.tryouts.positionLocks || makeTryoutPositionLocks(false);
+    for (const rule of TRYOUT_POSITION_RULES) {
+      if (normalized.tryouts.positionLocks[rule.id] == null) normalized.tryouts.positionLocks[rule.id] = false;
+    }
+    normalized.tryouts.activePositionId = normalized.tryouts.activePositionId || firstTryoutPositionId(normalized.tryouts);
+    if (!findTryoutPositionRule(normalized.tryouts.activePositionId)) {
+      normalized.tryouts.activePositionId = firstTryoutPositionId(normalized.tryouts);
+    }
     normalized.tryouts.captainSelections = normalized.tryouts.captainSelections || {
       varsityId: null,
       jvId: null
@@ -3130,8 +3445,13 @@ function normalizeLoadedState(loaded) {
             match.pregame.lineupIds || [],
             normalized.team.captains?.varsityId
           );
+          match.pregame.liberoId = sanitizeLiberoId(
+            varsity,
+            match.pregame.liberoId || normalized.team.defaultLiberos?.varsityId,
+            match.pregame.lineupIds
+          );
           match.pregame.benchIds = varsity
-            .filter((player) => !match.pregame.lineupIds.includes(player.id))
+            .filter((player) => !match.pregame.lineupIds.includes(player.id) && player.id !== match.pregame.liberoId)
             .map((player) => player.id);
         }
       }
@@ -3199,6 +3519,7 @@ function startCareerFromOnboarding(draft, coachName, schoolName, mascot) {
   draft.team.chemistry = 55;
   draft.team.captains = { varsityId: null, jvId: null };
   draft.team.defaultLineups = { varsity: [], jv: [] };
+  draft.team.defaultLiberos = { varsityId: null, jvId: null };
   draft.program.incomingCommits = [];
   draft.phase = "tryouts";
   generateTryoutPool(draft);
@@ -3284,8 +3605,57 @@ function handleClick(event) {
     mutate(
       (draft) => {
         applyTryoutAutofill(draft, mode);
+        draft.notices = [{ id: Date.now(), tone: "good", message: `Tryouts auto-filled by ${mode}.` }];
       },
       `tryout-autofill-${mode}`
+    );
+    return;
+  }
+
+  if (action === "tryout-position") {
+    const positionId = target.dataset.positionId;
+    mutate(
+      (draft) => {
+        if (!draft.tryouts) return;
+        if (!findTryoutPositionRule(positionId)) return;
+        draft.tryouts.activePositionId = positionId;
+      },
+      "tryout-position"
+    );
+    return;
+  }
+
+  if (action === "tryout-lock-position") {
+    mutate(
+      (draft) => {
+        if (!draft.tryouts) return;
+        draft.tryouts.positionLocks = draft.tryouts.positionLocks || makeTryoutPositionLocks(false);
+        const activePosition = draft.tryouts.activePositionId || firstTryoutPositionId(draft.tryouts);
+        const currentlyLocked = Boolean(draft.tryouts.positionLocks?.[activePosition]);
+        if (currentlyLocked) {
+          draft.tryouts.positionLocks[activePosition] = false;
+          draft.notices = [{ id: Date.now(), tone: "neutral", message: `${positionLabel(activePosition)} unlocked for edits.` }];
+          return;
+        }
+        const validation = validateTryoutPositionLocked(draft.tryouts, activePosition);
+        if (!validation.ok) {
+          draft.notices = [{ id: Date.now(), tone: "bad", message: validation.message }];
+          return;
+        }
+        draft.tryouts.positionLocks[activePosition] = true;
+        const next = TRYOUT_POSITION_RULES.find((rule) => !draft.tryouts.positionLocks[rule.id]);
+        if (next) draft.tryouts.activePositionId = next.id;
+        draft.notices = [
+          {
+            id: Date.now(),
+            tone: "good",
+            message: next
+              ? `${positionLabel(activePosition)} locked. Next up: ${next.label}.`
+              : "All position groups locked. Select captains and finalize tryouts."
+          }
+        ];
+      },
+      "tryout-lock-position"
     );
     return;
   }
@@ -3296,6 +3666,29 @@ function handleClick(event) {
     mutate(
       (draft) => {
         if (!draft.tryouts?.assignments[playerId]) return;
+        draft.tryouts.positionLocks = draft.tryouts.positionLocks || makeTryoutPositionLocks(false);
+        const player = draft.tryouts.candidates.find((candidate) => candidate.id === playerId);
+        if (!player) return;
+        const activePosition = draft.tryouts.activePositionId || firstTryoutPositionId(draft.tryouts);
+        if (player.position !== activePosition) {
+          draft.notices = [{ id: Date.now(), tone: "bad", message: `Finish ${positionLabel(activePosition)} assignments first.` }];
+          return;
+        }
+        if (draft.tryouts.positionLocks?.[activePosition]) {
+          draft.notices = [{ id: Date.now(), tone: "bad", message: `${positionLabel(activePosition)} is locked.` }];
+          return;
+        }
+        const rule = findTryoutPositionRule(activePosition);
+        const currentAssignment = draft.tryouts.assignments[playerId] || "cut";
+        const counts = getTryoutPositionCounts(draft.tryouts, activePosition);
+        if (value === "varsity" && currentAssignment !== "varsity" && counts.varsity >= (rule?.varsity || 0)) {
+          draft.notices = [{ id: Date.now(), tone: "bad", message: `${rule?.label || activePosition} Varsity quota is full.` }];
+          return;
+        }
+        if (value === "jv" && currentAssignment !== "jv" && counts.jv >= (rule?.jv || 0)) {
+          draft.notices = [{ id: Date.now(), tone: "bad", message: `${rule?.label || activePosition} JV quota is full.` }];
+          return;
+        }
         draft.tryouts.assignments[playerId] = value;
         if (draft.tryouts.captainSelections?.varsityId === playerId && value !== "varsity") {
           draft.tryouts.captainSelections.varsityId = null;
@@ -3413,6 +3806,8 @@ function handleClick(event) {
         const captainId = teamType === "varsity" ? draft.team.captains?.varsityId : draft.team.captains?.jvId;
         if (!players.length) return;
         draft.team.defaultLineups[teamType] = bestLineupIds(players, captainId);
+        const liberoKey = teamType === "varsity" ? "varsityId" : "jvId";
+        draft.team.defaultLiberos[liberoKey] = sanitizeLiberoId(players, null, draft.team.defaultLineups[teamType]);
         draft.notices = [
           {
             id: Date.now(),
@@ -3778,8 +4173,26 @@ function handleChange(event) {
         const captainId = teamType === "varsity" ? draft.team.captains?.varsityId : draft.team.captains?.jvId;
         const lineup = updateLineupSlot(draft.team.defaultLineups[teamType], slot, playerId, players, captainId);
         draft.team.defaultLineups[teamType] = lineup;
+        const liberoKey = teamType === "varsity" ? "varsityId" : "jvId";
+        draft.team.defaultLiberos[liberoKey] = sanitizeLiberoId(players, draft.team.defaultLiberos[liberoKey], lineup);
       },
       "default-lineup-slot"
+    );
+    return;
+  }
+
+  if (action === "default-libero") {
+    const teamType = target.dataset.team || "varsity";
+    const playerId = target.value || null;
+    mutate(
+      (draft) => {
+        ensureDefaultLineups(draft);
+        const players = teamType === "varsity" ? getVarsityPlayers(draft) : getJvPlayers(draft);
+        const lineup = draft.team.defaultLineups[teamType] || [];
+        const liberoKey = teamType === "varsity" ? "varsityId" : "jvId";
+        draft.team.defaultLiberos[liberoKey] = sanitizeLiberoId(players, playerId, lineup);
+      },
+      "default-libero"
     );
     return;
   }
@@ -3804,9 +4217,33 @@ function handleChange(event) {
           draft.team.captains?.varsityId
         );
         match.pregame.lineupIds = lineup;
-        match.pregame.benchIds = varsity.filter((player) => !lineup.includes(player.id)).map((player) => player.id);
+        match.pregame.liberoId = sanitizeLiberoId(varsity, match.pregame.liberoId, lineup);
+        match.pregame.benchIds = varsity
+          .filter((player) => !lineup.includes(player.id) && player.id !== match.pregame.liberoId)
+          .map((player) => player.id);
       },
       "pregame-lineup-slot"
+    );
+    return;
+  }
+
+  if (action === "pregame-libero") {
+    const weekId = target.dataset.weekId;
+    const matchId = target.dataset.matchId;
+    const playerId = target.value || null;
+    mutate(
+      (draft) => {
+        const week = draft.season.weeks.find((candidate) => candidate.id === weekId);
+        if (!week || week.kind !== "league") return;
+        const match = week.matches.find((candidate) => candidate.id === matchId);
+        if (!match || match.status !== "pregame" || !match.pregame) return;
+        const varsity = getVarsityPlayers(draft);
+        match.pregame.liberoId = sanitizeLiberoId(varsity, playerId, match.pregame.lineupIds || []);
+        match.pregame.benchIds = varsity
+          .filter((player) => !(match.pregame.lineupIds || []).includes(player.id) && player.id !== match.pregame.liberoId)
+          .map((player) => player.id);
+      },
+      "pregame-libero"
     );
     return;
   }
@@ -3833,8 +4270,11 @@ function handleChange(event) {
         const varsity = getVarsityPlayers(draft);
         const lineup = sanitizeLineupIds(varsity, array, draft.team.captains?.varsityId);
         match.pregame.lineupIds = lineup;
+        match.pregame.liberoId = sanitizeLiberoId(varsity, match.pregame.liberoId, lineup);
         const lineupSet = new Set(lineup);
-        match.pregame.benchIds = varsity.filter((player) => !lineupSet.has(player.id)).map((player) => player.id);
+        match.pregame.benchIds = varsity
+          .filter((player) => !lineupSet.has(player.id) && player.id !== match.pregame.liberoId)
+          .map((player) => player.id);
       },
       "pregame-lineup"
     );
@@ -4010,36 +4450,71 @@ function renderTryouts() {
       </div>
     `;
   }
-  const candidates = state.tryouts?.candidates || [];
-  const counts = recalcRosterAssignmentsCounts(state.tryouts);
+  const tryouts = state.tryouts;
+  const candidates = tryouts.candidates || [];
+  const counts = recalcRosterAssignmentsCounts(tryouts);
+  const locks = tryouts.positionLocks || makeTryoutPositionLocks(false);
+  const activePositionId =
+    tryouts.activePositionId && findTryoutPositionRule(tryouts.activePositionId)
+      ? tryouts.activePositionId
+      : firstTryoutPositionId(tryouts);
+  const activeRule = findTryoutPositionRule(activePositionId) || TRYOUT_POSITION_RULES[0];
+  const activeLocked = Boolean(locks[activePositionId]);
+  const allLocked = allTryoutPositionsLocked(tryouts);
+  const activeCounts = getTryoutPositionCounts(tryouts, activePositionId);
+  const activePlayers = candidates
+    .filter((player) => player.position === activePositionId)
+    .sort((a, b) => playerOverall(b) - playerOverall(a));
   const varsityCandidates = candidates
-    .filter((player) => state.tryouts.assignments[player.id] === "varsity")
+    .filter((player) => tryouts.assignments[player.id] === "varsity")
     .sort((a, b) => b.leadership - a.leadership);
   const jvCandidates = candidates
-    .filter((player) => state.tryouts.assignments[player.id] === "jv")
+    .filter((player) => tryouts.assignments[player.id] === "jv")
     .sort((a, b) => b.leadership - a.leadership);
 
   return `
     <div class="stack">
       <div class="card">
         <h2>Tryouts</h2>
-        <p class="subtle">Select exactly 12 Varsity and 12 JV players. Set one captain for each team. Captains with high leadership provide a match boost only when they can stay on the court.</p>
+        <p class="subtle">Assign one position group at a time, then lock it in before moving to the next. Quotas: LIB 2/2, OH 3/3, MB 3/3, S 2/2, RS 2/2.</p>
         <div class="grid-three" style="margin-top:0.7rem;">
-          <div class="kpi"><strong>${state.tryouts.summary.returning}</strong><span>Returning Tryouts</span></div>
-          <div class="kpi"><strong>${state.tryouts.summary.transfers}</strong><span>Transfers</span></div>
-          <div class="kpi"><strong>${state.tryouts.summary.noShows}</strong><span>No-Shows</span></div>
-          <div class="kpi"><strong>${state.tryouts.summary.recruits || 0}</strong><span>Signed Recruits</span></div>
+          <div class="kpi"><strong>${tryouts.summary.returning}</strong><span>Returning Tryouts</span></div>
+          <div class="kpi"><strong>${tryouts.summary.transfers}</strong><span>Transfers</span></div>
+          <div class="kpi"><strong>${tryouts.summary.noShows}</strong><span>No-Shows</span></div>
+          <div class="kpi"><strong>${tryouts.summary.recruits || 0}</strong><span>Signed Recruits</span></div>
         </div>
         <div class="line" style="margin-top:0.8rem;">
           <div>
             <span class="tag">Varsity ${counts.varsity}/12</span>
             <span class="tag">JV ${counts.jv}/12</span>
             <span class="tag">Cuts ${counts.cut}</span>
+            <span class="tag">${allLocked ? "All Position Groups Locked" : "Position Groups In Progress"}</span>
           </div>
           <div>
             <button class="btn btn-secondary" data-action="tryout-autofill" data-mode="skill">Auto by Skill</button>
             <button class="btn btn-secondary" data-action="tryout-autofill" data-mode="potential">Auto by Potential</button>
           </div>
+        </div>
+        <div class="tryout-position-nav" style="margin-top:0.75rem;">
+          ${TRYOUT_POSITION_RULES.map((rule) => {
+            const ruleCounts = getTryoutPositionCounts(tryouts, rule.id);
+            const done = Boolean(locks[rule.id]);
+            const active = rule.id === activePositionId;
+            return `
+              <button class="btn ${active ? "btn-accent" : "btn-secondary"} tryout-position-pill ${done ? "done" : ""}" data-action="tryout-position" data-position-id="${rule.id}">
+                ${rule.label} ${done ? "✓" : ""}
+                <span class="footnote">${ruleCounts.varsity}/${rule.varsity} V · ${ruleCounts.jv}/${rule.jv} JV</span>
+              </button>
+            `;
+          }).join("")}
+        </div>
+        <div class="line" style="margin-top:0.7rem; justify-content:flex-start; flex-wrap:wrap;">
+          <span class="tag">Active: ${activeRule.label}</span>
+          <span class="tag">Varsity ${activeCounts.varsity}/${activeRule.varsity}</span>
+          <span class="tag">JV ${activeCounts.jv}/${activeRule.jv}</span>
+          <button class="btn ${activeLocked ? "btn-secondary" : "btn-primary"}" data-action="tryout-lock-position">
+            ${activeLocked ? `Unlock ${activeRule.label}` : `Lock ${activeRule.label}`}
+          </button>
         </div>
         <div class="grid-two" style="margin-top:0.8rem;">
           <label>
@@ -4049,7 +4524,7 @@ function renderTryouts() {
               ${varsityCandidates
                 .map(
                   (player) =>
-                    `<option value="${player.id}" ${state.tryouts.captainSelections?.varsityId === player.id ? "selected" : ""}>${player.name} (OVR ${playerOverall(player)}, LDR ${player.leadership})</option>`
+                    `<option value="${player.id}" ${tryouts.captainSelections?.varsityId === player.id ? "selected" : ""}>${player.name} (OVR ${playerOverall(player)}, LDR ${player.leadership})</option>`
                 )
                 .join("")}
             </select>
@@ -4061,7 +4536,7 @@ function renderTryouts() {
               ${jvCandidates
                 .map(
                   (player) =>
-                    `<option value="${player.id}" ${state.tryouts.captainSelections?.jvId === player.id ? "selected" : ""}>${player.name} (OVR ${playerOverall(player)}, LDR ${player.leadership})</option>`
+                    `<option value="${player.id}" ${tryouts.captainSelections?.jvId === player.id ? "selected" : ""}>${player.name} (OVR ${playerOverall(player)}, LDR ${player.leadership})</option>`
                 )
                 .join("")}
             </select>
@@ -4091,25 +4566,30 @@ function renderTryouts() {
               <th class="right">AW</th>
               <th class="right">RS</th>
               <th class="right">LD</th>
-              <th>Origin</th>
+              <th>Prev Team</th>
               <th>Assign</th>
             </tr>
           </thead>
           <tbody>
-            ${candidates
-              .sort((a, b) => playerOverall(b) - playerOverall(a))
+            ${activePlayers
               .map((player) => {
                 const estimated = estimatePotential(player, state.career.upgrades.potentialVision);
-                const assignment = state.tryouts.assignments[player.id] || "cut";
+                const assignment = tryouts.assignments[player.id] || "cut";
+                const varsityDisabled =
+                  activeLocked ||
+                  (assignment !== "varsity" && activeCounts.varsity >= activeRule.varsity);
+                const jvDisabled =
+                  activeLocked ||
+                  (assignment !== "jv" && activeCounts.jv >= activeRule.jv);
                 return `
                   <tr>
                     <td>${renderPlayerIdentity(player, true)}</td>
-                    <td>${player.position}</td>
+                    <td>${positionLabel(player.position)}</td>
                     <td>${gradeLabel(player.grade)}</td>
                     <td class="right">${formatHeight(player.heightInches)}</td>
-                    <td class="right">${player.standingReach}</td>
-                    <td class="right">${player.blockTouch}</td>
-                    <td class="right">${player.approachTouch}</td>
+                    <td class="right">${formatHeight(player.standingReach)}</td>
+                    <td class="right">${formatHeight(player.blockTouch)}</td>
+                    <td class="right">${formatHeight(player.approachTouch)}</td>
                     <td class="right">${playerOverall(player)}</td>
                     <td class="right">${estimated}</td>
                     <td class="right">${player.serving}</td>
@@ -4120,11 +4600,11 @@ function renderTryouts() {
                     <td class="right">${player.awareness}</td>
                     <td class="right">${player.resilience}</td>
                     <td class="right">${player.leadership}</td>
-                    <td>${player.origin}</td>
+                    <td>${previousTeamLabel(player)}</td>
                     <td>
-                      <button class="btn btn-secondary" data-action="set-assignment" data-player-id="${player.id}" data-value="varsity" ${assignment === "varsity" ? "disabled" : ""}>V</button>
-                      <button class="btn btn-secondary" data-action="set-assignment" data-player-id="${player.id}" data-value="jv" ${assignment === "jv" ? "disabled" : ""}>JV</button>
-                      <button class="btn btn-secondary" data-action="set-assignment" data-player-id="${player.id}" data-value="cut" ${assignment === "cut" ? "disabled" : ""}>Cut</button>
+                      <button class="btn btn-secondary" data-action="set-assignment" data-player-id="${player.id}" data-value="varsity" ${(assignment === "varsity" || varsityDisabled) ? "disabled" : ""}>V</button>
+                      <button class="btn btn-secondary" data-action="set-assignment" data-player-id="${player.id}" data-value="jv" ${(assignment === "jv" || jvDisabled) ? "disabled" : ""}>JV</button>
+                      <button class="btn btn-secondary" data-action="set-assignment" data-player-id="${player.id}" data-value="cut" ${(assignment === "cut" || activeLocked) ? "disabled" : ""}>Cut</button>
                     </td>
                   </tr>
                 `;
@@ -4136,7 +4616,7 @@ function renderTryouts() {
       </div>
 
       <div class="card">
-        <button class="btn btn-primary" data-action="finalize-tryouts">Lock Rosters</button>
+        <button class="btn btn-primary" data-action="finalize-tryouts" ${allLocked ? "" : "disabled"}>Lock Rosters</button>
       </div>
     </div>
   `;
@@ -4247,15 +4727,30 @@ function renderLineupBoard(players, lineupIds, opts = {}) {
   const teamType = opts.teamType || "varsity";
   const action = opts.action || "default-lineup-slot";
   const captainId = opts.captainId || null;
+  const liberoAction = opts.liberoAction || null;
   const sortedPlayers = [...players].sort((a, b) => playerOverall(b) - playerOverall(a));
   const normalizedLineup = sanitizeLineupIds(sortedPlayers, lineupIds || [], captainId);
+  const liberoId = sanitizeLiberoId(sortedPlayers, opts.liberoId || null, normalizedLineup);
   const lineupMap = new Map(sortedPlayers.map((player) => [player.id, player]));
   const lineupSet = new Set(normalizedLineup);
-  const benchPlayers = sortedPlayers.filter((player) => !lineupSet.has(player.id));
+  const benchPlayers = sortedPlayers.filter((player) => !lineupSet.has(player.id) && player.id !== liberoId);
+  const oopPenalty = calculateOutOfPositionPenalty(sortedPlayers, normalizedLineup, liberoId);
+  const liberoPlayer = lineupMap.get(liberoId) || null;
+  const liberoAttrs = [
+    `data-action="${liberoAction || "default-libero"}"`,
+    teamType ? `data-team="${teamType}"` : "",
+    opts.weekId ? `data-week-id="${opts.weekId}"` : "",
+    opts.matchId ? `data-match-id="${opts.matchId}"` : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const slotHtml = LINEUP_SLOT_ORDER.map((slot) => {
+    const slotRule = LINEUP_ROLE_SLOTS.find((entry) => entry.index === slot);
+    const expectedPos = slotRule?.expectedPosition || "";
     const playerId = normalizedLineup[slot] || "";
     const player = lineupMap.get(playerId) || null;
+    const mismatch = Boolean(player && expectedPos && player.position !== expectedPos);
     const selectAttrs = [
       `data-action="${action}"`,
       `data-slot="${slot}"`,
@@ -4268,6 +4763,7 @@ function renderLineupBoard(players, lineupIds, opts = {}) {
     return `
       <div class="lineup-slot slot-${slot + 1}">
         <div class="lineup-slot-index">#${slot + 1}</div>
+        <div class="lineup-slot-role">${slotRule?.label || "Role"} (${expectedPos})</div>
         ${
           player
             ? `<img class="pixel-avatar lineup-avatar" src="${avatarDataUriForPlayer(player)}" alt="${player.name}" />`
@@ -4275,6 +4771,7 @@ function renderLineupBoard(players, lineupIds, opts = {}) {
         }
         <div class="lineup-slot-name">${player ? player.name : "Open Slot"}</div>
         <div class="footnote">${player ? `${player.position} | OVR ${playerOverall(player)} | LDR ${player.leadership}` : "Select a starter"}</div>
+        ${mismatch ? `<div class="footnote negative">Out of position penalty</div>` : ""}
         ${
           editable
             ? `
@@ -4311,9 +4808,34 @@ function renderLineupBoard(players, lineupIds, opts = {}) {
       <div class="lineup-board-header">
         <h4>${opts.title || "Lineup"}</h4>
         <p class="subtle">${opts.subtitle || "Set your on-court rotation and bench order."}</p>
+        <p class="footnote">5-1 structure: 2 OH, 2 MB, 1 S, 1 Opposite, plus 1 Libero. Current out-of-position penalty: ${oopPenalty.toFixed(1)}.</p>
       </div>
       <div class="lineup-court">
         ${slotHtml}
+      </div>
+      <div class="lineup-libero">
+        <strong>Libero</strong>
+        <div class="lineup-libero-row">
+          ${
+            liberoPlayer
+              ? `<span class="bench-chip"><img class="pixel-avatar bench-avatar" src="${avatarDataUriForPlayer(liberoPlayer)}" alt="${liberoPlayer.name}" /><span>${liberoPlayer.name} (${liberoPlayer.position}, ${playerOverall(liberoPlayer)})</span></span>`
+              : `<span class="subtle">No libero selected.</span>`
+          }
+          ${
+            editable
+              ? `
+                <select class="select lineup-libero-select" ${liberoAttrs}>
+                  ${sortedPlayers
+                    .map(
+                      (candidate) =>
+                        `<option value="${candidate.id}" ${candidate.id === liberoId ? "selected" : ""}>${candidate.name} (${candidate.position}, OVR ${playerOverall(candidate)})</option>`
+                    )
+                    .join("")}
+                </select>
+              `
+              : ""
+          }
+        </div>
       </div>
       <div class="lineup-bench">
         <strong>Bench</strong>
@@ -4350,6 +4872,7 @@ function renderMatchCard(week, match) {
   if (match.status === "pregame" && match.pregame) {
     const varsity = getVarsityPlayers(state).slice().sort((a, b) => playerOverall(b) - playerOverall(a));
     const pregameLineup = sanitizeLineupIds(varsity, match.pregame.lineupIds || [], state.team.captains?.varsityId);
+    const pregameLibero = sanitizeLiberoId(varsity, match.pregame.liberoId, pregameLineup);
     const intelHints = [];
     if (intel?.playstyleKnown) intelHints.push("Playstyle mapped");
     if (intel?.strengthKnown) intelHints.push(`Strength: ${traitLabel(intel.strengthTrait)}`);
@@ -4375,6 +4898,8 @@ function renderMatchCard(week, match) {
           ${renderLineupBoard(varsity, pregameLineup, {
             editable: true,
             action: "pregame-lineup-slot",
+            liberoId: pregameLibero,
+            liberoAction: "pregame-libero",
             teamType: "varsity",
             weekId: week.id,
             matchId: match.id,
@@ -4408,6 +4933,7 @@ function renderMatchCard(week, match) {
     const rotationText = orderedRotation
       .map((entry, idx) => `${idx + 1}:${entry.player.name.split(" ")[0]}`)
       .join(" | ");
+    const libero = getVarsityPlayers(state).find((player) => player.id === live.liberoId);
     return `
       <div class="card live-card">
         <h4>${match.opponentName} (${match.home ? "Home" : "Away"})</h4>
@@ -4424,6 +4950,7 @@ function renderMatchCard(week, match) {
         </div>
         <p class="subtle">Set ${live.currentSet.setIndex} to ${live.currentSet.target}. Serving: ${live.serving === "team" ? "You" : "Opponent"}.</p>
         <p class="footnote">Rotation: ${rotationText || "No lineup set"}.</p>
+        <p class="footnote">Libero: ${libero ? `${libero.name} (${libero.position})` : "Unset"}.</p>
         <div>${setTags || '<span class="tag">No completed sets yet</span>'}</div>
         ${
           live.scenario
@@ -4637,6 +5164,8 @@ function renderSeasonLineupTab() {
     `;
   }
   const lineup = getDefaultLineupIds(state, "varsity");
+  const liberoId = getDefaultLiberoId(state, "varsity");
+  const libero = varsity.find((player) => player.id === liberoId);
   const captain = varsity.find((player) => player.id === state.team.captains?.varsityId);
   const lineupLeadership = lineup
     .map((id) => varsity.find((player) => player.id === id))
@@ -4649,16 +5178,19 @@ function renderSeasonLineupTab() {
       <p class="subtle">This lineup is auto-loaded every time you open pregame match prep.</p>
       <div class="line" style="justify-content:flex-start; gap:0.45rem; flex-wrap:wrap; margin-top:0.45rem;">
         <span class="tag">Captain: ${captain ? `${captain.name} (LDR ${captain.leadership})` : "Unset"}</span>
+        <span class="tag">Libero: ${libero ? `${libero.name} (${libero.position})` : "Unset"}</span>
         <span class="tag">Lineup Avg LDR ${averageLeadership}</span>
       </div>
       <div style="margin-top:0.6rem;">
         ${renderLineupBoard(varsity, lineup, {
           editable: true,
           action: "default-lineup-slot",
+          liberoId,
+          liberoAction: "default-libero",
           teamType: "varsity",
           captainId: state.team.captains?.varsityId,
           title: "Court View",
-          subtitle: "Use each slot dropdown to set your default 6-man rotation."
+          subtitle: "Use each slot dropdown to set your default 5-1 lineup plus libero."
         })}
       </div>
       <div class="line" style="justify-content:flex-start; margin-top:0.7rem;">

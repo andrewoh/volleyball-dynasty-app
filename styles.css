@@ -221,6 +221,13 @@ body {
   border: 1px solid rgba(20, 57, 110, 0.22);
 }
 
+.lineup-slot-role {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #1c4f9d;
+}
+
 .lineup-avatar {
   width: 60px;
   height: 60px;
@@ -244,6 +251,30 @@ body {
 
 .lineup-select {
   margin-top: 0.32rem;
+  font-size: 0.82rem;
+}
+
+.lineup-libero {
+  padding: 0.6rem 0.75rem;
+  background: rgba(238, 230, 205, 0.92);
+  border-top: 1px solid rgba(27, 24, 20, 0.15);
+}
+
+.lineup-libero strong {
+  font-family: "Bebas Neue", sans-serif;
+  letter-spacing: 0.05em;
+  color: #2b2a28;
+}
+
+.lineup-libero-row {
+  margin-top: 0.35rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.lineup-libero-select {
   font-size: 0.82rem;
 }
 
@@ -312,6 +343,25 @@ body {
   width: 24px;
   height: 24px;
   border-radius: 5px;
+}
+
+.tryout-position-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.tryout-position-pill {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.16rem;
+}
+
+.tryout-position-pill.done {
+  border: 1px solid rgba(17, 122, 67, 0.5);
+  background: #d8efe2;
+  color: #1f6c45;
 }
 
 .btn {
@@ -554,6 +604,10 @@ th {
   .lineup-slot {
     width: 31%;
   }
+
+  .lineup-libero-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -610,5 +664,13 @@ th {
 
   .lineup-slot-name {
     font-size: 0.92rem;
+  }
+
+  .tryout-position-nav {
+    flex-direction: column;
+  }
+
+  .tryout-position-pill {
+    width: 100%;
   }
 }
