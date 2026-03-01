@@ -274,7 +274,9 @@ const runtime = {
   lastSavedAt: null,
   pendingIdbWrite: Promise.resolve(),
   renderScheduled: false,
-  avatarCache: new Map()
+  avatarCache: new Map(),
+  optionsMenuOpen: false,
+  resetConfirmOpen: false
 };
 
 let state = null;
@@ -3612,10 +3614,52 @@ function replaceStateFromImport(nextState) {
   return true;
 }
 
+function resetProgressToNewCareer() {
+  state = createInitialState();
+  state.notices = [{ id: Date.now(), tone: "good", message: "Progress reset. New career ready." }];
+  runtime.avatarCache.clear();
+  runtime.optionsMenuOpen = false;
+  runtime.resetConfirmOpen = false;
+  persistState();
+  render();
+}
+
 function handleClick(event) {
   const target = event.target.closest("[data-action]");
   if (!target) return;
   const action = target.dataset.action;
+
+  if (action === "toggle-options-menu") {
+    runtime.optionsMenuOpen = !runtime.optionsMenuOpen;
+    if (!runtime.optionsMenuOpen) runtime.resetConfirmOpen = false;
+    render();
+    return;
+  }
+
+  if (action === "close-options-menu") {
+    runtime.optionsMenuOpen = false;
+    runtime.resetConfirmOpen = false;
+    render();
+    return;
+  }
+
+  if (action === "open-reset-progress-confirm") {
+    runtime.optionsMenuOpen = true;
+    runtime.resetConfirmOpen = true;
+    render();
+    return;
+  }
+
+  if (action === "cancel-reset-progress") {
+    runtime.resetConfirmOpen = false;
+    render();
+    return;
+  }
+
+  if (action === "confirm-reset-progress") {
+    resetProgressToNewCareer();
+    return;
+  }
 
   if (action === "dismiss-notice") {
     mutate((draft) => {
@@ -4388,7 +4432,38 @@ function renderBanner() {
         <strong>${runtime.saveStatus}</strong>
         <span>Last save ${formatTime(runtime.lastSavedAt)}</span>
       </div>
+      <button class="banner-menu-btn" data-action="toggle-options-menu" aria-label="Open options menu" aria-expanded="${runtime.optionsMenuOpen ? "true" : "false"}">☰</button>
       <div class="phase-row">${stageRow}</div>
+    </div>
+  `;
+}
+
+function renderOptionsMenu() {
+  if (!runtime.optionsMenuOpen) return "";
+
+  const body = runtime.resetConfirmOpen
+    ? `
+      <h3>Reset Progress</h3>
+      <p class="subtle">This will permanently erase your current autosave and restart from the very beginning.</p>
+      <p class="footnote">This cannot be undone.</p>
+      <div class="line" style="margin-top:0.8rem;">
+        <button class="btn btn-secondary" data-action="cancel-reset-progress">Cancel</button>
+        <button class="btn btn-danger" data-action="confirm-reset-progress">Yes, Reset</button>
+      </div>
+    `
+    : `
+      <h3>Options</h3>
+      <p class="subtle">Manage game settings and save actions.</p>
+      <div class="stack" style="margin-top:0.65rem;">
+        <button class="btn btn-danger" data-action="open-reset-progress-confirm">Reset Progress</button>
+        <button class="btn btn-secondary" data-action="close-options-menu">Close</button>
+      </div>
+    `;
+
+  return `
+    <div class="menu-overlay" data-action="close-options-menu"></div>
+    <div class="options-menu card">
+      ${body}
     </div>
   `;
 }
@@ -5544,6 +5619,7 @@ function render() {
 
   app.innerHTML = `
     ${renderBanner()}
+    ${renderOptionsMenu()}
     ${renderNotice()}
     <div class="main-grid">
       <div class="stack">
