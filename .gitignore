@@ -6,3 +6,7 @@
 
 # Python cache (if used locally)
 __pycache__/
+
+# JS / Expo
+node_modules/
+.expo/
